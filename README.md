@@ -1,1 +1,1 @@
-# QuackStore
+# QuackStore: Cache Smarter, Quack faster
