@@ -1,0 +1,132 @@
+###
+### Before we load the extension, below queries will fail
+###
+statement error
+SET GLOBAL cachefs_cache_enabled = true;
+----
+Catalog Error
+
+statement error
+SET GLOBAL cachefs_cache_path = true;
+----
+Catalog Error
+
+###
+### Extensions required for the test
+###
+require cachefs
+
+require httpfs
+
+require icu
+
+###
+### Generate cache path using current datetime
+###
+statement ok
+SET VARIABLE epoch_time = epoch(get_current_time());
+
+statement ok
+SET VARIABLE cache_path = '/tmp/test_cache_' || (getvariable('epoch_time') * 1000)::INT || '.bin';
+
+###
+### Set the path and make sure we got it saved in DuckDB
+###
+query I nosort CACHE_PATH
+SELECT getvariable('cache_path') AS value;
+
+statement ok
+SET GLOBAL cachefs_cache_path = getvariable('cache_path');
+
+query I nosort CACHE_PATH
+SELECT current_setting('cachefs_cache_path');
+----
+
+###
+### Create helper DB objects
+###
+
+# A view to check if cache file exists (I'm too lazy to type 'getvariable()'' each time)
+statement ok
+CREATE OR REPLACE VIEW CACHE_EXISTS AS SELECT COUNT(1)::BOOLEAN as value FROM read_blob(getvariable('cache_path'));
+
+# This is the file we'll be using for test
+statement ok
+SET VARIABLE uri = 'https://raw.githubusercontent.com/duckdb/duckdb/refs/heads/main/LICENSE';
+
+###
+### Before start make sure cache does not exist
+###
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+false
+
+
+###
+### Fetch using direct URI
+###
+query IIII nosort BASELINE
+SELECT content FROM read_text(getvariable('uri'));
+
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+false
+
+
+###
+### Fetch with cache disabled
+###
+statement ok
+SET GLOBAL cachefs_cache_enabled = false;
+
+# Make sure we got cache disabled in DuckDB
+query I
+SELECT current_setting('cachefs_cache_enabled');
+----
+false
+
+# Run the query. Cache is disabled in settings, hence we shouldn't see it created and used for file access
+query IIII nosort BASELINE
+SELECT content FROM read_text('cachefs://' || getvariable('uri'));
+----
+
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+false
+
+
+###
+### Fetch with cache enabled
+###
+statement ok
+SET GLOBAL cachefs_cache_enabled = true;
+
+# Make sure we got cache enabled in DuckDB
+query I
+SELECT current_setting('cachefs_cache_enabled');
+----
+true
+
+# Now run the query with cache enabled
+query IIII nosort BASELINE
+SELECT content FROM read_text('cachefs://' || getvariable('uri'));
+----
+
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+true
+
+###
+### Clear the cache. This should remove the cache file.
+###
+statement ok
+SELECT * FROM cachefs_clear_cache();
+
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+false

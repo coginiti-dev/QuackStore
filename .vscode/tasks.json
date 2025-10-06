@@ -1,0 +1,68 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "shell",
+			"label": "Clean Build Dir",
+			"command": "make",
+			"args": [
+				"clean"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": false
+			},
+			"problemMatcher": [],
+			"detail": "Cleaning the build directory"
+		},
+		{
+			"type": "shell",
+			"label": "Build Release (Parameterized)",
+			"command": "make",
+			"args": [
+				"release",
+				"EXT_RELEASE_FLAGS=${input:EXT_RELEASE_FLAGS}"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": false
+			},
+			"problemMatcher": [],
+			"detail": "Compiling the release build (${input:EXT_RELEASE_FLAGS})"
+		},
+		{
+			"type": "shell",
+			"label": "Build Debug (Parameterized)",
+			"command": "make",
+			"args": [
+				"debug",
+				"EXT_DEBUG_FLAGS=${input:EXT_DEBUG_FLAGS}"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": [],
+			"detail": "Compiling the debug build (${input:EXT_DEBUG_FLAGS})"
+		},
+		{
+            "label": "Clear terminal",
+            "type": "shell",
+            "command": "clear"
+        }		
+	],
+	"inputs": [
+        {
+            "id": "EXT_DEBUG_FLAGS",
+            "type": "promptString",
+            "description": "Enter EXT_DEBUG_FLAGS (e.g., -DPARAM=VALUE)",
+            "default": "-DENABLE_UBSAN=OFF"
+        },
+        {
+            "id": "EXT_RELEASE_FLAGS",
+            "type": "promptString",
+            "description": "Enter EXT_RELEASE_FLAGS (e.g., -DPARAM=VALUE)",
+            "default": ""
+        }
+    ]	
+}

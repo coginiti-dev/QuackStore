@@ -1,0 +1,206 @@
+###
+### Test cachefs_evict_files function
+###
+require cachefs
+
+require httpfs
+
+require icu
+
+###
+### Generate unique cache path for this test
+###
+statement ok
+SET VARIABLE epoch_time = epoch(get_current_time());
+
+statement ok
+SET VARIABLE cache_path = '/tmp/test_cache_functions_' || (getvariable('epoch_time') * 1000)::INT || '.bin';
+
+###
+### Setup cache configuration
+###
+statement ok
+SET GLOBAL cachefs_cache_path = getvariable('cache_path');
+
+statement ok
+SET GLOBAL cachefs_cache_enabled = true;
+
+###
+### Helper to check if cache file exists
+###
+statement ok
+CREATE OR REPLACE VIEW CACHE_EXISTS AS SELECT COUNT(1)::BOOLEAN as value FROM read_blob(getvariable('cache_path'));
+
+###
+### Test URI for caching
+###
+statement ok
+SET VARIABLE test_uri = 'https://raw.githubusercontent.com/duckdb/duckdb/refs/heads/main/LICENSE';
+
+###
+### Test 1: Create cache by accessing a file
+###
+statement ok
+SELECT content FROM read_text('cachefs://' || getvariable('test_uri'));
+
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+true
+
+###
+### Test 2: Test cachefs_evict_files with empty list
+###
+statement ok
+SELECT content FROM read_text('cachefs://' || getvariable('test_uri'));
+
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+true
+
+statement ok
+CALL cachefs_evict_files([]::VARCHAR[]);
+
+# Cache should still exist since we evicted nothing
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+true
+
+###
+### Test 3: Test cachefs_evict_files with single file
+###
+statement ok
+CALL cachefs_evict_files([getvariable('test_uri')]);
+
+# Note: Cache file may still exist even after evicting files, as it contains metadata
+# The actual test would be that subsequent access would re-download the file
+
+###
+### Test 4: Test cachefs_evict_files with multiple files
+###
+statement ok
+SET VARIABLE test_uri2 = 'https://raw.githubusercontent.com/duckdb/duckdb/refs/heads/main/README.md';
+
+# Cache both files
+statement ok
+SELECT content FROM read_text('cachefs://' || getvariable('test_uri'));
+
+statement ok
+SELECT content FROM read_text('cachefs://' || getvariable('test_uri2'));
+
+# Evict both files
+statement ok
+CALL cachefs_evict_files([getvariable('test_uri'), getvariable('test_uri2')]);
+
+###
+### Test 5: Test cachefs_evict_files with non-existent files (should still succeed)
+###
+statement ok
+CALL cachefs_evict_files(['https://non-existent-url.com/file.txt']);
+
+###
+### Test 6: Test cachefs_evict_files with mixed existing and non-existing files
+###
+# Cache one file first
+statement ok
+SELECT content FROM read_text('cachefs://' || getvariable('test_uri'));
+
+# Try to evict both existing and non-existing file
+statement ok
+CALL cachefs_evict_files([
+    getvariable('test_uri'), 
+    'https://non-existent-url.com/file.txt'
+]);
+
+###
+### Test 7: Test function behavior when cache is disabled
+###
+statement ok
+SET GLOBAL cachefs_cache_enabled = false;
+
+# Evict should still work even when disabled  
+statement ok
+CALL cachefs_evict_files(['some-file.txt']);
+
+###
+### Test 8: Test with different list types for evict_files
+###
+statement ok
+SET GLOBAL cachefs_cache_enabled = true;
+
+# Test with VARCHAR list (explicit cast)
+statement ok
+CALL cachefs_evict_files(['file1.txt', 'file2.txt']::VARCHAR[]);
+
+###
+### Test 9: Test failure scenarios - invalid parameters for cachefs_evict_files
+###
+
+# Test with NULL parameter (should cause error, not return false)
+statement error
+CALL cachefs_evict_files(NULL);
+----
+Binder Error: cachefs_evict_files argument cannot be NULL
+
+# Test with non-list parameter (should cause error, not return false)
+statement error
+CALL cachefs_evict_files('not-a-list');
+----
+
+###
+### Test 10: Test cachefs_evict_files with invalid list element types
+###
+
+# Test with integer list (should cause error during binding)
+statement error
+CALL cachefs_evict_files([1, 2, 3]);
+----
+
+###
+### Test 11: Test functions with very long file paths (edge case)
+###
+statement ok
+SET GLOBAL cachefs_cache_path = getvariable('cache_path');
+
+statement ok
+SET GLOBAL cachefs_cache_enabled = true;
+
+# Create a very long file path
+statement ok
+SET VARIABLE long_path = 'https://example.com/' || repeat('a', 1000) || '.txt';
+
+statement ok
+CALL cachefs_evict_files([getvariable('long_path')]);
+
+###
+### Test 12: Test with special characters in file paths
+###
+statement ok
+CALL cachefs_evict_files(['https://example.com/file with spaces.txt']);
+
+statement ok
+CALL cachefs_evict_files(['https://example.com/!@#$%^&*_+.txt']);  
+
+statement ok
+CALL cachefs_evict_files(['https://example.com/file?param=value&other=123']);
+
+###
+### Test 13: Large list of files to evict
+###
+statement ok
+CREATE TABLE large_file_list AS 
+SELECT 'https://example.com/file' || i || '.txt' as path 
+FROM range(100) t(i);
+
+statement error
+CALL cachefs_evict_files((SELECT list(path) FROM large_file_list));
+----
+Binder Error: Table function cannot contain subqueries
+
+###
+### Cleanup: Remove temporary tables
+###
+statement ok
+DROP TABLE IF EXISTS large_file_list;

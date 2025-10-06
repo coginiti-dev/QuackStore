@@ -1,0 +1,6 @@
+build
+.idea
+.venv
+.vscode/settings.json
+duckdb_unittest_tempdir/
+.DS_Store

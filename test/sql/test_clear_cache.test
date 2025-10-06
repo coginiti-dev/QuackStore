@@ -1,0 +1,116 @@
+###
+### Test cachefs_clear_cache function
+###
+require cachefs
+
+require httpfs
+
+require icu
+
+###
+### Generate unique cache path for this test
+###
+statement ok
+SET VARIABLE epoch_time = epoch(get_current_time());
+
+statement ok
+SET VARIABLE cache_path = '/tmp/test_clear_cache_' || (getvariable('epoch_time') * 1000)::INT || '.bin';
+
+###
+### Setup cache configuration
+###
+statement ok
+SET GLOBAL cachefs_cache_path = getvariable('cache_path');
+
+statement ok
+SET GLOBAL cachefs_cache_enabled = true;
+
+###
+### Helper to check if cache file exists
+###
+statement ok
+CREATE OR REPLACE VIEW CACHE_EXISTS AS SELECT COUNT(1)::BOOLEAN as value FROM read_blob(getvariable('cache_path'));
+
+###
+### Test URI for caching
+###
+statement ok
+SET VARIABLE test_uri = 'https://raw.githubusercontent.com/duckdb/duckdb/refs/heads/main/LICENSE';
+
+###
+### Test 1: cachefs_clear_cache() works when cache doesn't exist
+###
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+false
+
+statement ok
+CALL cachefs_clear_cache();
+
+###
+### Test 2: Create cache by accessing a file
+###
+statement ok
+SELECT content FROM read_text('cachefs://' || getvariable('test_uri'));
+
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+true
+
+###
+### Test 3: cachefs_clear_cache() works when cache exists and removes it
+###
+statement ok
+CALL cachefs_clear_cache();
+
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+false
+
+###
+### Test 4: Multiple consecutive clear operations
+###
+statement ok
+CALL cachefs_clear_cache();
+
+statement ok
+CALL cachefs_clear_cache();
+
+statement ok
+CALL cachefs_clear_cache();
+
+###
+### Test 5: Clear cache works when cache is disabled
+###
+statement ok
+SET GLOBAL cachefs_cache_enabled = false;
+
+statement ok
+CALL cachefs_clear_cache();
+
+###
+### Test 6: Clear cache after re-enabling and creating cache again
+###
+statement ok
+SET GLOBAL cachefs_cache_enabled = true;
+
+# Create cache
+statement ok
+SELECT content FROM read_text('cachefs://' || getvariable('test_uri'));
+
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+true
+
+# Clear it
+statement ok
+CALL cachefs_clear_cache();
+
+query I
+SELECT value FROM CACHE_EXISTS;
+----
+false
