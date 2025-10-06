@@ -4,7 +4,7 @@
 
 #include "block_manager.hpp"
 
-using namespace cachefs;
+using namespace quackstore;
 
 TEST_CASE("BlockCacheDataFileHeader size", "[BlockManager]")
 {
@@ -110,7 +110,7 @@ TEST_CASE("FreeList saving/loading works correctly", "[BlockManager]") {
     // Write free list to storage
     std::set<block_id_t> original_free_list;
     {
-        auto block_mgr = duckdb::make_uniq<cachefs::BlockManager>(options);
+        auto block_mgr = duckdb::make_uniq<quackstore::BlockManager>(options);
         block_mgr->CreateNewDatabase(storage_file_path);
 
         // Allocate blocks
@@ -136,7 +136,7 @@ TEST_CASE("FreeList saving/loading works correctly", "[BlockManager]") {
 
     // Read free list from storage and verify
     {
-        auto block_mgr = duckdb::make_uniq<cachefs::BlockManager>(options);
+        auto block_mgr = duckdb::make_uniq<quackstore::BlockManager>(options);
         block_mgr->LoadExistingDatabase(storage_file_path);
 
         // Verify that the free list matches the original

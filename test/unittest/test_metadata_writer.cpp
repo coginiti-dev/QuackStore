@@ -6,7 +6,7 @@
 #include "metadata_reader.hpp"
 #include "metadata_writer.hpp"
 
-using namespace cachefs;
+using namespace quackstore;
 
 TEST_CASE("MetadataWriter handles multiple block writes correctly", "[MetadataWriter]") {
     auto storage_file_path = "/tmp/cache.bin";

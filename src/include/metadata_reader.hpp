@@ -3,7 +3,7 @@
 #include <duckdb.hpp>
 #include <duckdb/common/serializer/read_stream.hpp>
 
-namespace cachefs {
+namespace quackstore {
 
 class BlockManager;
 
@@ -13,6 +13,7 @@ public:
     MetadataReader(BlockManager &block_mgr, block_id_t start_block_id);
 
     void ReadData(duckdb::data_ptr_t buffer, idx_t read_size) override;
+	void ReadData(duckdb::QueryContext context, duckdb::data_ptr_t buffer, idx_t read_size) override;
 
     //! Get the list of blocks used during this read operation
     const duckdb::vector<block_id_t> &GetUsedMetadataBlocks() const { return used_metadata_blocks; }
@@ -33,4 +34,4 @@ private:
     duckdb::vector<block_id_t> used_metadata_blocks;
 };
 
-}  // namespace cachefs
+}  // namespace quackstore

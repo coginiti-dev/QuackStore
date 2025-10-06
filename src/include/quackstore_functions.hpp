@@ -8,7 +8,7 @@ namespace duckdb {
     class ScalarFunctionSet;
 }
 
-namespace cachefs {
+namespace quackstore {
 
 class Functions
 {
@@ -16,4 +16,4 @@ public:
 	static duckdb::vector<duckdb::TableFunctionSet> GetTableFunctions(duckdb::DatabaseInstance& instance);
 };
 
-}  // namespace cachefs
+}  // namespace quackstore

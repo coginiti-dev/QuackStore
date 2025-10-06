@@ -5,11 +5,11 @@
 #include <duckdb/common/local_file_system.hpp>
 
 #include "cache.hpp"
-#include "cache_params.hpp"
+#include "quackstore_params.hpp"
 #include "extension_state.hpp"
-#include "cache_file_system.hpp"
+#include "quackstore_filesystem.hpp"
 
-using namespace cachefs;
+using namespace quackstore;
 
 class WithDuckDB {
 public:
@@ -42,31 +42,31 @@ public:
     duckdb::DuckDB duckdb;
 };
 
-TEST_CASE_METHOD(WithDuckDB, "Check Extension Params (from DBInstance)", "[cachefs]") {
+TEST_CASE_METHOD(WithDuckDB, "Check Extension Params (from DBInstance)", "[quackstore]") {
     auto params = GetExtensionParams(GetDBInstance());
-    CHECK(params.cache_enabled == ExtensionParams::DEFAULT_CACHEFS_CACHE_ENABLED);
-    CHECK(params.max_cache_size == ExtensionParams::DEFAULT_CACHEFS_CACHE_SIZE);
-    CHECK(params.cache_path == ExtensionParams::DEFAULT_CACHEFS_CACHE_PATH);
-    CHECK(params.data_mutable == ExtensionParams::DEFAULT_CACHEFS_DATA_MUTABLE);
+    CHECK(params.cache_enabled == ExtensionParams::DEFAULT_QUACKSTORE_CACHE_ENABLED);
+    CHECK(params.max_cache_size == ExtensionParams::DEFAULT_QUACKSTORE_CACHE_SIZE);
+    CHECK(params.cache_path == ExtensionParams::DEFAULT_QUACKSTORE_CACHE_PATH);
+    CHECK(params.data_mutable == ExtensionParams::DEFAULT_QUACKSTORE_DATA_MUTABLE);
 }
 
-TEST_CASE_METHOD(WithDuckDB, "Check Extension Params (from ClientContext)", "[cachefs]") {
+TEST_CASE_METHOD(WithDuckDB, "Check Extension Params (from ClientContext)", "[quackstore]") {
     auto connection = duckdb::Connection{GetDBInstance()};
     auto params = GetExtensionParams(*connection.context);
-    CHECK(params.cache_enabled == ExtensionParams::DEFAULT_CACHEFS_CACHE_ENABLED);
-    CHECK(params.max_cache_size == ExtensionParams::DEFAULT_CACHEFS_CACHE_SIZE);
-    CHECK(params.cache_path == ExtensionParams::DEFAULT_CACHEFS_CACHE_PATH);
-    CHECK(params.data_mutable == ExtensionParams::DEFAULT_CACHEFS_DATA_MUTABLE);
+    CHECK(params.cache_enabled == ExtensionParams::DEFAULT_QUACKSTORE_CACHE_ENABLED);
+    CHECK(params.max_cache_size == ExtensionParams::DEFAULT_QUACKSTORE_CACHE_SIZE);
+    CHECK(params.cache_path == ExtensionParams::DEFAULT_QUACKSTORE_CACHE_PATH);
+    CHECK(params.data_mutable == ExtensionParams::DEFAULT_QUACKSTORE_DATA_MUTABLE);
 }
 
-TEST_CASE_METHOD(WithDuckDB, "Set CacheParams programmatically", "[cache_params]") {
+TEST_CASE_METHOD(WithDuckDB, "Set CacheParams programmatically", "[quackstore_params]") {
     auto &db = GetDBInstance();
     auto &config = db.config;
     auto con = duckdb::Connection{db};
 
     // Set new values
     for(bool val: {true, false}) {
-        config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED, duckdb::Value::BOOLEAN(val));
+        config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED, duckdb::Value::BOOLEAN(val));
         CHECK(GetExtensionParams(db).cache_enabled == val);
         CHECK(GetExtensionParams(*con.context).cache_enabled == val);
 
@@ -74,7 +74,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams programmatically", "[cache_params]
         CHECK(GetExtensionParams(*another_con.context).cache_enabled == val);
     }
     for(uint64_t val: {1024, 1024 * 1024, 1024 * 1024 * 1024}) {
-        config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_SIZE, duckdb::Value::UBIGINT(val));
+        config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_SIZE, duckdb::Value::UBIGINT(val));
         CHECK(GetExtensionParams(db).max_cache_size == val);
         CHECK(GetExtensionParams(*con.context).max_cache_size == val);
 
@@ -83,7 +83,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams programmatically", "[cache_params]
     }
     for(duckdb::string val : {"/tmp/test_cache_0", "/tmp/test_cache_1", "/tmp/test_cache_2"}) {
         auto path = val + "_" + std::to_string(std::time(nullptr)) + ".bin";
-        config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_PATH, duckdb::Value(path));
+        config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_PATH, duckdb::Value(path));
         CHECK(GetExtensionParams(db).cache_path == path);
         CHECK(GetExtensionParams(*con.context).cache_path == path);
 
@@ -93,7 +93,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams programmatically", "[cache_params]
         RemoveLocalFile(path);
     }
     for(bool val: {true, false}) {
-        config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_DATA_MUTABLE, duckdb::Value::BOOLEAN(val));
+        config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_DATA_MUTABLE, duckdb::Value::BOOLEAN(val));
         CHECK(GetExtensionParams(db).data_mutable == val);
         CHECK(GetExtensionParams(*con.context).data_mutable == val);
 
@@ -102,7 +102,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams programmatically", "[cache_params]
     }
 }
 
-TEST_CASE_METHOD(WithDuckDB, "Set CacheParams via SET / SET GLOBAL", "[cache_params]") {
+TEST_CASE_METHOD(WithDuckDB, "Set CacheParams via SET / SET GLOBAL", "[quackstore_params]") {
     auto& db = GetDBInstance();
     auto con = duckdb::Connection{db};
 
@@ -116,7 +116,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams via SET / SET GLOBAL", "[cache_par
         SECTION("Set Cache Enabled (LOCAL)") {
             auto query = duckdb::StringUtil::Format(
                 "SET %s = '%s';", 
-                ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED,
+                ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED,
                 enabled
             );
             auto res = con.Query(query);
@@ -126,7 +126,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams via SET / SET GLOBAL", "[cache_par
         SECTION("Set Cache Enabled (GLOBAL)") {
             auto query = duckdb::StringUtil::Format(
                 "SET GLOBAL %s = '%s';", 
-                ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED,
+                ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED,
                 enabled
             );
             auto res = con.Query(query);
@@ -139,7 +139,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams via SET / SET GLOBAL", "[cache_par
         SECTION("Set Cache Size (LOCAL)") {
             auto query = duckdb::StringUtil::Format(
                 "SET %s = %d;",
-                ExtensionParams::PARAM_NAME_CACHEFS_CACHE_SIZE,
+                ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_SIZE,
                 size
             );
             auto res = con.Query(query);
@@ -149,7 +149,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams via SET / SET GLOBAL", "[cache_par
         SECTION("Set Cache Size (GLOBAL)") {
             auto query = duckdb::StringUtil::Format(
                 "SET GLOBAL %s = %d;",
-                ExtensionParams::PARAM_NAME_CACHEFS_CACHE_SIZE,
+                ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_SIZE,
                 size
             );
             auto res = con.Query(query);
@@ -163,7 +163,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams via SET / SET GLOBAL", "[cache_par
         SECTION("Set Cache Path (LOCAL)") {
             auto query = duckdb::StringUtil::Format(
                 "SET %s = '%s';", 
-                ExtensionParams::PARAM_NAME_CACHEFS_CACHE_PATH,
+                ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_PATH,
                 path
             );
             auto res = con.Query(query);
@@ -173,7 +173,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams via SET / SET GLOBAL", "[cache_par
         SECTION("Set Cache Path (GLOBAL)") {
             auto query = duckdb::StringUtil::Format(
                 "SET GLOBAL %s = '%s';", 
-                ExtensionParams::PARAM_NAME_CACHEFS_CACHE_PATH,
+                ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_PATH,
                 path
             );
             auto res = con.Query(query);
@@ -188,7 +188,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams via SET / SET GLOBAL", "[cache_par
         SECTION("Set Data Mutable (SESSION)") {
             auto query = duckdb::StringUtil::Format(
                 "SET %s = '%s';", 
-                ExtensionParams::PARAM_NAME_CACHEFS_DATA_MUTABLE,
+                ExtensionParams::PARAM_NAME_QUACKSTORE_DATA_MUTABLE,
                 mutable_val
             );
             auto res = con.Query(query);
@@ -199,7 +199,7 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams via SET / SET GLOBAL", "[cache_par
         SECTION("Set Data Mutable (GLOBAL)") {
             auto query = duckdb::StringUtil::Format(
                 "SET GLOBAL %s = '%s';", 
-                ExtensionParams::PARAM_NAME_CACHEFS_DATA_MUTABLE,
+                ExtensionParams::PARAM_NAME_QUACKSTORE_DATA_MUTABLE,
                 mutable_val
             );
             auto res = con.Query(query);
@@ -209,9 +209,9 @@ TEST_CASE_METHOD(WithDuckDB, "Set CacheParams via SET / SET GLOBAL", "[cache_par
     }
 }
 
-TEST_CASE_METHOD(WithDuckDB, "Change cache paths while cache is used", "[cachefs]")
+TEST_CASE_METHOD(WithDuckDB, "Change cache paths while cache is used", "[quackstore]")
 {
-    const duckdb::string FILENAME = "cachefs://test/testdata/read_test.txt";
+    const duckdb::string FILENAME = "quackstore://test/testdata/read_test.txt";
 
     const duckdb::string INITIAL_PATH = "/tmp/cache_0.bin";
     RemoveLocalFile(INITIAL_PATH);
@@ -222,12 +222,12 @@ TEST_CASE_METHOD(WithDuckDB, "Change cache paths while cache is used", "[cachefs
 
     auto& db = GetDBInstance();
     db.config.SetOptionByName(
-        ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED,
+        ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED,
         duckdb::Value::BOOLEAN(true)
     );
     REQUIRE(GetExtensionParams(GetDBInstance()).cache_enabled == true);
     db.config.SetOptionByName(
-        ExtensionParams::PARAM_NAME_CACHEFS_CACHE_PATH,
+        ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_PATH,
         duckdb::Value(INITIAL_PATH)
     );
     REQUIRE(GetExtensionParams(GetDBInstance()).cache_path == INITIAL_PATH);
@@ -237,7 +237,7 @@ TEST_CASE_METHOD(WithDuckDB, "Change cache paths while cache is used", "[cachefs
     auto& context_fs = duckdb::FileSystem::GetFileSystem(context);
     auto query = duckdb::StringUtil::Format(
         "SET GLOBAL %s = '%s';",
-        ExtensionParams::PARAM_NAME_CACHEFS_CACHE_PATH,
+        ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_PATH,
         NEW_PATH
     );
 
@@ -269,12 +269,12 @@ TEST_CASE_METHOD(WithDuckDB, "Change cache paths while cache is used", "[cachefs
     RemoveLocalFile(NEW_PATH);
 }
 
-TEST_CASE_METHOD(WithDuckDB, "Data mutable parameter scope behavior", "[cache_params]") {
+TEST_CASE_METHOD(WithDuckDB, "Data mutable parameter scope behavior", "[quackstore_params]") {
     auto& db = GetDBInstance();
     
     SECTION("Global setting affects all connections") {
         // Set globally
-        db.config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_DATA_MUTABLE, duckdb::Value::BOOLEAN(false));
+        db.config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_DATA_MUTABLE, duckdb::Value::BOOLEAN(false));
         
         // Check that new connections inherit the global setting
         auto con1 = duckdb::Connection{db};
@@ -285,7 +285,7 @@ TEST_CASE_METHOD(WithDuckDB, "Data mutable parameter scope behavior", "[cache_pa
         CHECK(GetExtensionParams(*con2.context).data_mutable == false);
         
         // Change global setting
-        db.config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_DATA_MUTABLE, duckdb::Value::BOOLEAN(true));
+        db.config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_DATA_MUTABLE, duckdb::Value::BOOLEAN(true));
         
         // New connections should get the new global value
         auto con3 = duckdb::Connection{db};
@@ -294,7 +294,7 @@ TEST_CASE_METHOD(WithDuckDB, "Data mutable parameter scope behavior", "[cache_pa
     
     SECTION("Session settings are independent") {
         // Set a global default
-        db.config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_DATA_MUTABLE, duckdb::Value::BOOLEAN(true));
+        db.config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_DATA_MUTABLE, duckdb::Value::BOOLEAN(true));
         
         auto con1 = duckdb::Connection{db};
         auto con2 = duckdb::Connection{db};
@@ -304,7 +304,7 @@ TEST_CASE_METHOD(WithDuckDB, "Data mutable parameter scope behavior", "[cache_pa
         CHECK(GetExtensionParams(*con2.context).data_mutable == true);
         
         // Set session-specific value for con1
-        auto res1 = con1.Query("SET cachefs_data_mutable = false;");
+        auto res1 = con1.Query("SET quackstore_data_mutable = false;");
         REQUIRE_FALSE(res1->HasError());
         
         // con1 should have session value, con2 should still have global value
@@ -313,11 +313,11 @@ TEST_CASE_METHOD(WithDuckDB, "Data mutable parameter scope behavior", "[cache_pa
         CHECK(GetExtensionParams(db).data_mutable == true); // Global unchanged
         
         // Set different session value for con2
-        auto res2 = con2.Query("SET cachefs_data_mutable = false;");
+        auto res2 = con2.Query("SET quackstore_data_mutable = false;");
         REQUIRE_FALSE(res2->HasError());
         
         // Now con1 can change its session value independently
-        auto res3 = con1.Query("SET cachefs_data_mutable = true;");
+        auto res3 = con1.Query("SET quackstore_data_mutable = true;");
         REQUIRE_FALSE(res3->HasError());
         
         CHECK(GetExtensionParams(*con1.context).data_mutable == true);
@@ -329,12 +329,12 @@ TEST_CASE_METHOD(WithDuckDB, "Data mutable parameter scope behavior", "[cache_pa
         auto con1 = duckdb::Connection{db};
         
         // Set session value
-        auto res1 = con1.Query("SET cachefs_data_mutable = false;");
+        auto res1 = con1.Query("SET quackstore_data_mutable = false;");
         REQUIRE_FALSE(res1->HasError());
         CHECK(GetExtensionParams(*con1.context).data_mutable == false);
         
         // Set global value via SQL
-        auto res2 = con1.Query("SET GLOBAL cachefs_data_mutable = true;");
+        auto res2 = con1.Query("SET GLOBAL quackstore_data_mutable = true;");
         REQUIRE_FALSE(res2->HasError());
         
         // Global should be updated, but existing session value should remain

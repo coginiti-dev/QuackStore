@@ -5,7 +5,7 @@ namespace duckdb {
     class ClientContext;
 }
 
-namespace cachefs {
+namespace quackstore {
 
 class Cache;
 
@@ -19,4 +19,4 @@ private:
     duckdb::unique_ptr<Cache> cache;
 };
 
-}  // namespace cachefs
+}  // namespace quackstore

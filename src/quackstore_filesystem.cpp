@@ -3,8 +3,8 @@
 #include <duckdb/common/types/timestamp.hpp>
 #include <duckdb/common/types/interval.hpp>
 
-#include "cache_file_system.hpp"
-#include "cache_params.hpp"
+#include "quackstore_filesystem.hpp"
+#include "quackstore_params.hpp"
 #include "cache.hpp"
 
 namespace {
@@ -13,7 +13,7 @@ namespace {
     }
 }
 
-namespace cachefs {
+namespace quackstore {
 
 // =============================================================================
 // BlockCachingFileHandle
@@ -22,7 +22,7 @@ namespace cachefs {
 class CacheFileHandle : public duckdb::FileHandle {
 public:
     CacheFileHandle(
-        CacheFileSystem &cache_fs, 
+        QuackstoreFileSystem &cache_fs, 
         const duckdb::string &path,
         duckdb::FileSystem& underlying_fs,
         Cache& cache,
@@ -34,7 +34,7 @@ public:
     , is_open(true)
     {
         // Lazy getters to avoid unnecessary IO calls
-        time_t underlying_last_modified = 0;
+        duckdb::timestamp_t underlying_last_modified = duckdb::timestamp_t::epoch();
         bool underlying_last_modified_requested = false;
         auto get_underlying_last_modified = [&]() {
             if (!underlying_last_modified_requested) {
@@ -76,7 +76,7 @@ public:
                 {
                     evict_file_entry = true;
                 }
-                else if (underlying_last_modified == 0)
+                else if (underlying_last_modified == duckdb::timestamp_t::epoch())
                 {
                     // Certain FS don't provide LastModified property. Let's check file size
                     evict_file_entry = (md.file_size != get_underlying_filesize() || get_underlying_filesize() == 0);
@@ -87,7 +87,7 @@ public:
                     // File changed - invalidate cache and update metadata
                     cache.Evict(path);
 
-                    time_t last_modified = get_underlying_last_modified();
+                    duckdb::timestamp_t last_modified = get_underlying_last_modified();
                     cache.StoreFileLastModified(GetPath(), last_modified);
 
                     int64_t filesize = get_underlying_filesize();
@@ -176,7 +176,7 @@ public:
     duckdb::unique_ptr<duckdb::FileHandle>& UnderlyingFileHandle() const {
         ValidateIsOpen();
         if (!underlying_file_handle) {
-            auto underlying_path = StripPrefix(path, CacheFileSystem::SCHEMA_PREFIX);
+            auto underlying_path = StripPrefix(path, QuackstoreFileSystem::SCHEMA_PREFIX);
             underlying_file_handle = underlying_fs.OpenFile(underlying_path, duckdb::FileOpenFlags::FILE_FLAGS_READ);
         }
         return underlying_file_handle;
@@ -194,8 +194,8 @@ public:
         return file_size;
     }
 
-    time_t GetFileLastModified() const {
-        time_t last_modified = 0;
+    duckdb::timestamp_t GetFileLastModified() const {
+        duckdb::timestamp_t last_modified = duckdb::timestamp_t::epoch();
         if (GetFileLastModifiedCached(last_modified))
         {
             return last_modified;
@@ -218,15 +218,14 @@ private:
         return false;
     }
 
-    bool GetFileLastModifiedCached(time_t& val) const {
-        val = 0;
+    bool GetFileLastModifiedCached(duckdb::timestamp_t& val) const {
+        val = duckdb::timestamp_t::epoch();
         MetadataManager::FileMetadata md;
         if (cache.RetrieveFileMetadata(GetPath(), md))
         {
             val = md.last_modified;
             return true;
         }
-        val = 0;
         return false;
     }
 
@@ -235,7 +234,7 @@ private:
         return underlying_fs.GetFileSize(*UnderlyingFileHandle());
     }
 
-    time_t GetFileLastModifiedUnderlying() const
+    duckdb::timestamp_t GetFileLastModifiedUnderlying() const
     {
         return underlying_fs.GetLastModifiedTime(*UnderlyingFileHandle());
     }
@@ -262,11 +261,11 @@ private:
 // BlockCachingFileSystem
 // =============================================================================
 
-CacheFileSystem::CacheFileSystem(Cache& cache)
+QuackstoreFileSystem::QuackstoreFileSystem(Cache& cache)
 : cache(cache)
 {}
 
-duckdb::unique_ptr<duckdb::FileHandle> CacheFileSystem::OpenFile(const duckdb::string &path, duckdb::FileOpenFlags flags,
+duckdb::unique_ptr<duckdb::FileHandle> QuackstoreFileSystem::OpenFile(const duckdb::string &path, duckdb::FileOpenFlags flags,
                                                  duckdb::optional_ptr<duckdb::FileOpener> opener) {
     if (!opener)
     {
@@ -289,7 +288,7 @@ duckdb::unique_ptr<duckdb::FileHandle> CacheFileSystem::OpenFile(const duckdb::s
     }
     else
     {
-        throw duckdb::InvalidInputException("Unable to read CacheFS parameters");
+        throw duckdb::InvalidInputException("Unable to read QuackStore extension parameters");
     }
 
     auto& underlying_fs = *underlying_fs_ptr;
@@ -307,22 +306,22 @@ duckdb::unique_ptr<duckdb::FileHandle> CacheFileSystem::OpenFile(const duckdb::s
     return duckdb::make_uniq<CacheFileHandle>(*this, path, underlying_fs, cache, std::move(params));
 }
 
-bool CacheFileSystem::CanHandleFile(const duckdb::string &path) {
+bool QuackstoreFileSystem::CanHandleFile(const duckdb::string &path) {
     return path.rfind(SCHEMA_PREFIX, 0) == 0;
 }
 
 
-void CacheFileSystem::Read(duckdb::FileHandle &handle, void *buffer, int64_t nr_bytes, idx_t location) {
+void QuackstoreFileSystem::Read(duckdb::FileHandle &handle, void *buffer, int64_t nr_bytes, idx_t location) {
     auto &caching_file_handle = handle.Cast<CacheFileHandle>();
     caching_file_handle.ReadChunk(buffer, nr_bytes, location);
 }
 
-int64_t CacheFileSystem::Read(duckdb::FileHandle &handle, void *buffer, int64_t nr_bytes) {
+int64_t QuackstoreFileSystem::Read(duckdb::FileHandle &handle, void *buffer, int64_t nr_bytes) {
     auto &caching_file_handle = handle.Cast<CacheFileHandle>();
     return caching_file_handle.ReadChunk(buffer, nr_bytes);
 }
 
-duckdb::vector<duckdb::string> CacheFileSystem::Glob(const duckdb::string &path, duckdb::FileOpener *opener) {
+duckdb::vector<duckdb::OpenFileInfo> QuackstoreFileSystem::Glob(const duckdb::string &path, duckdb::FileOpener *opener) {
     duckdb::string actual_path = StripPrefix(path, SCHEMA_PREFIX);
 
     duckdb::FileSystem* ufs = nullptr;
@@ -338,38 +337,38 @@ duckdb::vector<duckdb::string> CacheFileSystem::Glob(const duckdb::string &path,
     }
     else
     {
-        throw duckdb::InvalidInputException("Unable to read CacheFS parameters");
+        throw duckdb::InvalidInputException("Unable to read QuackStore extension parameters");
     }
     auto& underlying_fs = *ufs;
 
     auto entries = underlying_fs.Glob(actual_path);
     if (path.rfind(SCHEMA_PREFIX, 0) == 0) {
         for (auto &e : entries) {
-            e = SCHEMA_PREFIX + e;
+            e.path = SCHEMA_PREFIX + e.path;
         }
     }
 
     return entries;
 }
 
-int64_t CacheFileSystem::GetFileSize(duckdb::FileHandle &handle) {
+int64_t QuackstoreFileSystem::GetFileSize(duckdb::FileHandle &handle) {
     auto &caching_file_handle = handle.Cast<CacheFileHandle>();
     return caching_file_handle.GetFileSize();
 }
 
-void CacheFileSystem::Seek(duckdb::FileHandle &handle, idx_t location) {
+void QuackstoreFileSystem::Seek(duckdb::FileHandle &handle, idx_t location) {
     auto &caching_file_handle = handle.Cast<CacheFileHandle>();
     caching_file_handle.current_location = location;
 }
 
-idx_t CacheFileSystem::SeekPosition(duckdb::FileHandle &handle) {
+idx_t QuackstoreFileSystem::SeekPosition(duckdb::FileHandle &handle) {
     auto &caching_file_handle = handle.Cast<CacheFileHandle>();
     return caching_file_handle.current_location;
 }
 
-time_t CacheFileSystem::GetLastModifiedTime(duckdb::FileHandle &handle) {
+duckdb::timestamp_t QuackstoreFileSystem::GetLastModifiedTime(duckdb::FileHandle &handle) {
     auto &caching_file_handle = handle.Cast<CacheFileHandle>();
     return caching_file_handle.GetFileLastModified();
 }
 
-}  // namespace cachefs
+}  // namespace quackstore

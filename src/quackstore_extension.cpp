@@ -8,56 +8,64 @@
 #include <duckdb/common/virtual_file_system.hpp>
 #include <duckdb/function/scalar_function.hpp>
 #include <duckdb/main/connection_manager.hpp>
-#include <duckdb/main/extension_util.hpp>
+#include <duckdb/main/extension/extension_loader.hpp>
 #include <duckdb/parser/parsed_data/create_table_function_info.hpp>
 
-#include "cache_file_system.hpp"
+#include "quackstore_filesystem.hpp"
 #include "cache.hpp"
-#include "cache_params.hpp"
-#include "cachefs_extension.hpp"
+#include "quackstore_params.hpp"
+#include "quackstore_extension.hpp"
 #include "extension_callback.hpp"
 #include "extension_state.hpp"
 
+namespace {
+    const char* EXTENSION_NAME = "quackstore";
+}
+
 namespace duckdb {
 
-static void LoadInternal(DatabaseInstance &instance) {
+static void LoadInternal(ExtensionLoader &loader) {
+    auto& instance = loader.GetDatabaseInstance();
+
     auto &config = DBConfig::GetConfig(instance);
-    cachefs::ExtensionParams::AddExtensionOptions(config);
+    quackstore::ExtensionParams::AddExtensionOptions(config);
 
     // NOTE: Cache is initialized here but will be lazily opened in the cache file system when first file is opened.
-    unique_ptr<cachefs::Cache> cache = make_uniq<cachefs::Cache>(CachefsExtension::BLOCK_SIZE);
+    unique_ptr<quackstore::Cache> cache = make_uniq<quackstore::Cache>(QuackstoreExtension::BLOCK_SIZE);
 
     // Register block caching file system
-    instance.GetFileSystem().RegisterSubSystem(make_uniq<cachefs::CacheFileSystem>(*cache));
+    instance.GetFileSystem().RegisterSubSystem(make_uniq<quackstore::QuackstoreFileSystem>(*cache));
 
     // Register extension functions
-	for (auto& fun : cachefs::Functions::GetTableFunctions(instance)) {
+	for (auto& fun : quackstore::Functions::GetTableFunctions(instance)) {
     	auto info = CreateTableFunctionInfo{fun};
 	    info.on_conflict = OnCreateConflict::REPLACE_ON_CONFLICT;
-		ExtensionUtil::RegisterFunction(instance, std::move(info));
+		loader.RegisterFunction(std::move(info));
 	}
 
-    auto extension_callback = make_uniq<cachefs::ExtensionCallback>(std::move(cache));
+    auto extension_callback = make_uniq<quackstore::ExtensionCallback>(std::move(cache));
     for (auto& connection : ConnectionManager::Get(instance).GetConnectionList()) {
         extension_callback->OnConnectionOpened(*connection);
     }
     config.extension_callbacks.push_back(std::move(extension_callback));
 }
 
-void CachefsExtension::Load(DuckDB &db) { 
-    LoadInternal(*db.instance); 
+void QuackstoreExtension::Load(ExtensionLoader &loader) { 
+    LoadInternal(loader); 
 }
 
-duckdb::string CachefsExtension::Name() { 
-    return "cachefs"; 
+string QuackstoreExtension::Name() { 
+    return EXTENSION_NAME; 
 }
 
 }  // namespace duckdb
 
 extern "C" {
-DUCKDB_EXTENSION_API void cachefs_init(duckdb::DatabaseInstance &db) { duckdb::LoadInternal(db); }
+DUCKDB_CPP_EXTENSION_ENTRY(quackstore, loader) {
+	duckdb::LoadInternal(loader);
+}
 
-DUCKDB_EXTENSION_API const char *cachefs_version() { return duckdb::DuckDB::LibraryVersion(); }
+// DUCKDB_EXTENSION_API const char *quackstore_version() { return duckdb::DuckDB::LibraryVersion(); }
 }
 
 #ifndef DUCKDB_EXTENSION_MAIN

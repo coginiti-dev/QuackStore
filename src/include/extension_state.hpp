@@ -6,9 +6,9 @@ namespace duckdb {
     class ClientContext;
 }
 
-namespace cachefs {
+namespace quackstore {
 
-class CacheFileSystem;
+class QuackstoreFileSystem;
 class Cache;
 
 class ExtensionState : public duckdb::ClientContextState {

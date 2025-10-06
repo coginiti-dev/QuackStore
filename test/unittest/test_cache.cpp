@@ -6,7 +6,7 @@
 
 #include "cache.hpp"
 
-using namespace cachefs;
+using namespace quackstore;
 
 namespace Catch {
 // A specialization for `BlockKey` string conversion
@@ -165,7 +165,7 @@ TEST_CASE("SetMaxCacheSize triggers eviction when reducing max cache size", "[Ca
 }
 
 // Class to simulate a crash during block storage
-class CrashingBlockManager : public cachefs::BlockManager {
+class CrashingBlockManager : public quackstore::BlockManager {
 public:
     using BlockManager::BlockManager;
 

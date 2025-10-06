@@ -3,7 +3,7 @@
 
 #include "metadata_manager.hpp"
 
-namespace cachefs {
+namespace quackstore {
 
 // =============================================================================
 // FileMetadata
@@ -18,7 +18,8 @@ void MetadataManager::FileMetadata::Write(duckdb::WriteStream &ser) const {
         ser.Write(block.block_id);
         ser.Write(block.checksum);
     }
-    ser.Write(last_modified); // Write the last modified timestamp
+    ser.Write(__last_modified_deprecated); // Write the last modified timestamp (deprecated field: __last_modified_deprecated)
+    ser.Write(last_modified.value); // Write the last modified timestamp
 }
 
 MetadataManager::FileMetadata MetadataManager::FileMetadata::Read(duckdb::ReadStream &source, uint32_t version) {
@@ -30,6 +31,9 @@ MetadataManager::FileMetadata MetadataManager::FileMetadata::Read(duckdb::ReadSt
         break;
         case 2:
             ReadV2(source, result);
+        break;
+        case 3:
+            ReadV3(source, result);
         break;
         default:
             throw duckdb::IOException("Unsupported file metadata version [" + std::to_string(version) + "]");
@@ -44,7 +48,9 @@ duckdb::string MetadataManager::FileMetadata::ToString() const {
         const auto& block = pair.second;
         result += "{" + std::to_string(block.block_index) + ": " + std::to_string(block.block_id) + "}, ";
     }
-    result += "}, last_modified=" + std::to_string(last_modified) + "}";
+    result += "}, __last_modified_deprecated=" + std::to_string(__last_modified_deprecated);
+    result += ", last_modified=" + std::to_string(last_modified.value);
+    result += "}";
     return result;
 }
 
@@ -63,7 +69,16 @@ void MetadataManager::FileMetadata::ReadV1(duckdb::ReadStream &source, MetadataM
 void MetadataManager::FileMetadata::ReadV2(duckdb::ReadStream &source, MetadataManager::FileMetadata& out)
 {
     ReadV1(source, out);
-    out.last_modified = source.Read<time_t>(); // Read the last modified timestamp
+    out.__last_modified_deprecated = source.Read<time_t>(); // Legacy field, read but not used
+    if (out.__last_modified_deprecated)
+    {
+        out.last_modified = duckdb::Timestamp::FromTimeT(out.__last_modified_deprecated);
+    }
+}
+void MetadataManager::FileMetadata::ReadV3(duckdb::ReadStream &source, MetadataManager::FileMetadata& out)
+{
+    ReadV2(source, out);
+    out.last_modified = duckdb::timestamp_t{source.Read<int64_t>()};
 }
 
 // =============================================================================
@@ -137,7 +152,7 @@ void MetadataManager::SetFileSize(const duckdb::string &file_path, int64_t file_
     entry.file_size = file_size;
 }
 
-void MetadataManager::SetFileLastModified(const duckdb::string &file_path, time_t timestamp) {
+void MetadataManager::SetFileLastModified(const duckdb::string &file_path, duckdb::timestamp_t timestamp) {
     auto& entry = files_metadata[file_path];
     entry.last_modified = timestamp;
 }
@@ -262,4 +277,4 @@ duckdb::vector<MetadataManager::BlockKey> MetadataManager::GetLRUState() const {
     return lru_state;
 }
 
-}  // namespace cachefs
+}  // namespace quackstore

@@ -6,7 +6,7 @@
 #include "metadata_reader.hpp"
 #include "metadata_writer.hpp"
 
-namespace cachefs {
+namespace quackstore {
 
 // =============================================================================
 // MetadataManager
@@ -41,7 +41,8 @@ public:
     struct FileMetadata {
         uint64_t file_size = 0;
         duckdb::unordered_map<block_id_t, FileMetadataBlockInfo> blocks;
-        time_t last_modified = 0;
+        time_t __last_modified_deprecated = 0;
+        duckdb::timestamp_t last_modified = duckdb::timestamp_t::epoch();
 
         void Write(duckdb::WriteStream &ser) const;
         static FileMetadata Read(duckdb::ReadStream &source, uint32_t version);
@@ -50,6 +51,7 @@ public:
     private:
         static void ReadV1(duckdb::ReadStream &source, MetadataManager::FileMetadata& out);
         static void ReadV2(duckdb::ReadStream &source, MetadataManager::FileMetadata& out);
+        static void ReadV3(duckdb::ReadStream &source, MetadataManager::FileMetadata& out);
     };
 
     MetadataManager();
@@ -61,7 +63,7 @@ public:
     void RegisterBlock(const duckdb::string &file_path, int64_t block_index, block_id_t block_id, uint64_t checksum);
     void UnregisterBlock(block_id_t block_id);
     void SetFileSize(const duckdb::string &file_path, int64_t file_size);
-    void SetFileLastModified(const duckdb::string &file_path, time_t timestamp);
+    void SetFileLastModified(const duckdb::string &file_path, duckdb::timestamp_t timestamp);
     bool GetFileMetadata(const duckdb::string &file_path, FileMetadata &file_metadata_out) const;
 
     void UpdateLRUOrder(block_id_t block_id);
@@ -93,4 +95,4 @@ private:
     duckdb::unordered_map<block_id_t, duckdb::list<block_id_t>::iterator> lru_map;
 };
 
-}  // namespace cachefs
+}  // namespace quackstore
