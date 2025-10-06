@@ -1,0 +1,64 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Run SQL tests (debug)",
+        "type": "lldb",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/debug/test/unittest",
+        "args": [
+            "--single-threaded", 
+            "${input:inputFile}"
+        ],
+        "stopOnEntry": false,
+        "cwd": "${workspaceFolder}",
+        // "terminal": "integrated",  // (default) for VSCode integrated terminal 
+        // "terminal": "external",    // for a new terminal window
+        // "terminal": "console",     // for DEBUG CONSOLE
+        // "terminal": "integrated",
+        "console": "integratedTerminal"
+      },
+      {
+        "name": "Run UT (debug)",
+        "type": "lldb",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/debug/extension/cachefs/test/unittest/unittest_cachefs",
+        "args": [
+          "${input:unittest_tag}"
+        ],
+        "stopOnEntry": false,
+        "cwd": "${workspaceFolder}",
+        //"terminal": "integrated"
+        "console": "integratedTerminal"
+      },      
+      {
+        "name": "Run DuckDB (debug)",
+        "type": "lldb",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/debug/duckdb",
+        "args": [],
+        "stopOnEntry": false,
+        "cwd": "${workspaceFolder}",
+        // "terminal": "integrated"
+        "console": "integratedTerminal",
+        "preLaunchTask": "Clear terminal"
+      },
+    ],
+    "inputs": [
+        {
+            "id": "inputFile",
+            "type": "pickString",
+            "description": "Debug Tests: Select a file to process",
+            "options": [
+                "${workspaceFolder}/test/sql/*",
+            ]
+        },
+        {
+          "id": "unittest_tag",
+          "type": "promptString",
+          "description": "Enter test group tag (e.g., [cachefs])",
+          "default": "[cachefs]"
+      },
+    ]
+  }
+  
