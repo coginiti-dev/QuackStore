@@ -1,8 +1,13 @@
 {
-  "dependencies": [],
-  "vcpkg-configuration": {
-    "overlay-ports": []
-  },
-  "builtin-baseline": "5e5d0e1cd7785623065e77eff011afdeec1a3574",
-  "overrides": []
+        "dependencies": [
+                "openssl"
+        ],
+        "vcpkg-configuration": {
+                "overlay-ports": [
+                        "./extension-ci-tools/vcpkg_ports"
+                ],
+                "overlay-triplets": [
+                        "./extension-ci-tools/toolchains"
+                ]
+        }
 }
