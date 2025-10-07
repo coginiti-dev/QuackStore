@@ -33,11 +33,11 @@ duckdb/release:
 ###
 .PHONY: test/unit/debug
 test/unit/debug:
-	./build/debug/extension/quackstore/test/unittest/unittest_quackstore
+	./build/debug/extension/$(EXT_NAME)/test/unittest/unittest_$(EXT_NAME)
 
 .PHONY: test/unit/release
 test/unit/release:
-	./build/release/extension/quackstore/test/unittest/unittest_quackstore
+	./build/release/extension/$(EXT_NAME)/test/unittest/unittest_$(EXT_NAME)
 
 ###
 ### Run SQL tests
@@ -48,10 +48,10 @@ test/unit/release:
 ###
 ### Run unit and SQL tests
 ###
-.PHONY: test/quackstore/debug
-test/quackstore/debug: test/unit/debug test_debug
+.PHONY: test/$(EXT_NAME)/debug
+test/$(EXT_NAME)/debug: test/unit/debug test_debug
 	@echo > /dev/null
 
-.PHONY: test/quackstore/release
-test/quackstore/release: test/unit/release test_release
+.PHONY: test/$(EXT_NAME)/release
+test/$(EXT_NAME)/release: test/unit/release test_release
 	@echo > /dev/null

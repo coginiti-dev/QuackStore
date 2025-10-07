@@ -12,6 +12,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  duckdb-stable-build:
+    name: Build extension binaries
+    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.4.1
+    with:
+      duckdb_version: v1.4.1
+      ci_tools_version: v1.4.1
+      extension_name: quackstore
+      exclude_archs: "windows_amd64_rtools;windows_amd64;windows_amd64_mingw;wasm_mvp;wasm_eh;wasm_threads"
+
   duckdb-next-build:
     name: Build extension binaries
     uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@main
@@ -19,13 +28,4 @@ jobs:
       duckdb_version: main
       ci_tools_version: main
       extension_name: quackstore
-      exclude_archs: "windows_amd64_rtools;windows_amd64;windows_amd64_mingw"
-
-  duckdb-stable-build:
-    name: Build extension binaries
-    uses: duckdb/extension-ci-tools/.github/workflows/_extension_distribution.yml@v1.4.0
-    with:
-      duckdb_version: v1.4.0
-      ci_tools_version: v1.4.0
-      extension_name: quackstore
-      exclude_archs: "windows_amd64_rtools;windows_amd64;windows_amd64_mingw"
+      exclude_archs: "windows_amd64_rtools;windows_amd64;windows_amd64_mingw;wasm_mvp;wasm_eh;wasm_threads"

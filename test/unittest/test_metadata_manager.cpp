@@ -6,6 +6,9 @@
 
 using namespace quackstore;
 
+const auto SAMPLE_TIME_T = time_t{1622547800};
+const auto SAMPLE_TIMESTAMP_T = duckdb::Timestamp::FromString("2036-10-01 12:34:56", false);
+
 MetadataManager::FileMetadata GetSampleMetadataV1()
 {
     auto result = MetadataManager::FileMetadata{};
@@ -19,13 +22,27 @@ MetadataManager::FileMetadata GetSampleMetadataV1()
     {
         D_ASSERT(block.first == block.second.block_id);
     }
+    REQUIRE(result.__last_modified_deprecated == 0);
+    REQUIRE(result.last_modified == duckdb::timestamp_t::epoch());
     return result;
 }
 
 MetadataManager::FileMetadata GetSampleMetadataV2()
 {
     auto result = GetSampleMetadataV1();
-    result.__last_modified_deprecated = 1622547800; // some arbitrary timestamp
+    result.__last_modified_deprecated = SAMPLE_TIME_T; // some arbitrary timestamp
+    REQUIRE(result.__last_modified_deprecated > 0);
+    REQUIRE(result.last_modified == duckdb::timestamp_t::epoch());
+    return result;
+}
+
+MetadataManager::FileMetadata GetSampleMetadataV3()
+{
+    auto result = GetSampleMetadataV2();
+    result.last_modified = SAMPLE_TIMESTAMP_T;
+    REQUIRE(result.last_modified > duckdb::timestamp_t::epoch());
+    REQUIRE(result.last_modified > duckdb::Timestamp::FromTimeT(result.__last_modified_deprecated));
+    
     return result;
 }
 
@@ -33,7 +50,6 @@ TEST_CASE("FileMetadata is constructed properly initialized", "[MetadataManager]
     MetadataManager::FileMetadata metadata;
     CHECK(metadata.file_size == 0);
     CHECK(metadata.blocks.empty());
-    CHECK(metadata.__last_modified_deprecated == 0);
     CHECK(metadata.last_modified == duckdb::timestamp_t::epoch());
 }
 
@@ -57,9 +73,6 @@ TEST_CASE("FileMetadata gets serialized and deserialized properly v1", "[Metadat
         CHECK(out_block.block_id == in_block.block_id);
         CHECK(out_block.checksum == in_block.checksum);
     }
-    REQUIRE(serialized.__last_modified_deprecated == 0);
-    CHECK(deserialized.__last_modified_deprecated == 0);
-    REQUIRE(serialized.last_modified == duckdb::timestamp_t::epoch());
     CHECK(deserialized.last_modified == duckdb::timestamp_t::epoch());
 }
 
@@ -83,14 +96,12 @@ TEST_CASE("FileMetadata gets serialized and deserialized properly v2", "[Metadat
         CHECK(out_block.block_id == in_block.block_id);
         CHECK(out_block.checksum == in_block.checksum);
     }
-    REQUIRE(serialized.__last_modified_deprecated > 0);
-    CHECK(deserialized.__last_modified_deprecated > 0);
-    REQUIRE(serialized.last_modified == duckdb::timestamp_t::epoch());
-    CHECK(deserialized.last_modified == duckdb::timestamp_t::epoch());
+    CHECK(deserialized.last_modified > duckdb::timestamp_t::epoch());
+    CHECK(deserialized.last_modified == duckdb::Timestamp::FromTimeT(serialized.__last_modified_deprecated));
 }
 
-TEST_CASE("FileMetadata gets serialized and deserialized properly v3 (read v2)", "[MetadataManager][FileMetadata]") {
-    const auto serialized = GetSampleMetadataV2();
+TEST_CASE("FileMetadata gets serialized and deserialized properly v3", "[MetadataManager][FileMetadata]") {
+    const auto serialized = GetSampleMetadataV3();
     INFO("Serialized metadata: " + serialized.ToString());
 
     duckdb::MemoryStream mem;
@@ -109,8 +120,6 @@ TEST_CASE("FileMetadata gets serialized and deserialized properly v3 (read v2)",
         CHECK(out_block.block_id == in_block.block_id);
         CHECK(out_block.checksum == in_block.checksum);
     }
-    REQUIRE(serialized.__last_modified_deprecated > 0);
-    CHECK(deserialized.__last_modified_deprecated > 0);
-    REQUIRE(serialized.last_modified > duckdb::timestamp_t::epoch());
     CHECK(deserialized.last_modified > duckdb::timestamp_t::epoch());
+    CHECK(deserialized.last_modified == SAMPLE_TIMESTAMP_T);
 }
