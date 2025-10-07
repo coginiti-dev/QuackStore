@@ -20,6 +20,4 @@ public:
 
 }  // namespace duckdb
 
-extern "C" void quackstore_duckdb_cpp_init(duckdb::ExtensionLoader &loader);
-
 #endif
