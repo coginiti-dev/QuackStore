@@ -184,7 +184,7 @@ public:
 duckdb::vector<uint8_t> InitializeRandomData(size_t size) {
     std::random_device rd;                               // Initialize a random device
     std::mt19937 gen(rd());                              // Seed the generator
-    std::uniform_int_distribution<uint8_t> dis(0, 255);  // Create a distribution in [0, 255]
+    std::uniform_int_distribution<unsigned int> dis(0, 255);  // Create a distribution in [0, 255]
 
     duckdb::vector<uint8_t> data(size, 0);
     for (auto& byte : data) {
