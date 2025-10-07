@@ -3,12 +3,12 @@
 #include <duckdb/function/function_set.hpp>
 #include <duckdb/main/database.hpp>
 
-#include "cache_params.hpp"
-#include "clear_cache_function.hpp"
+#include "quackstore_params.hpp"
+#include "quackstore_functions.hpp"
 #include "extension_state.hpp"
 #include "cache.hpp"
 
-namespace cachefs {
+namespace quackstore {
 
 struct ClearCacheFunctionData : public duckdb::TableFunctionData {
     bool finished = false;
@@ -34,30 +34,30 @@ static duckdb::unique_ptr<duckdb::FunctionData> BindEvictFilesFunction(duckdb::C
     auto res = duckdb::make_uniq<EvictFilesFunctionData>();
 
     if (input.inputs.empty()) {
-        throw duckdb::BinderException("cachefs_evict_files requires a list of file paths as argument");
+        throw duckdb::BinderException("quackstore_evict_files requires a list of file paths as argument");
     }
 
     duckdb::Value& list = input.inputs.front();
     
     if (list.IsNull()) {
-        throw duckdb::BinderException("cachefs_evict_files argument cannot be NULL");
+        throw duckdb::BinderException("quackstore_evict_files argument cannot be NULL");
     }
     
     if (list.type().id() != duckdb::LogicalTypeId::LIST) {
-        throw duckdb::BinderException("cachefs_evict_files requires a list argument, got %s", list.type().ToString());
+        throw duckdb::BinderException("quackstore_evict_files requires a list argument, got %s", list.type().ToString());
     }
     
     // Check that list elements are strings
     const auto& child_type = duckdb::ListType::GetChildType(list.type());
     if (child_type.id() != duckdb::LogicalTypeId::VARCHAR) {
-        throw duckdb::BinderException("cachefs_evict_files requires a list of strings (VARCHAR[]), got %s", list.type().ToString());
+        throw duckdb::BinderException("quackstore_evict_files requires a list of strings (VARCHAR[]), got %s", list.type().ToString());
     }
     
     const duckdb::vector<duckdb::Value>& values = duckdb::ListValue::GetChildren(list);
     res->paths.reserve(values.size());
     for(const auto& val: values) {
         if (val.IsNull()) {
-            throw duckdb::BinderException("cachefs_evict_files list cannot contain NULL values");
+            throw duckdb::BinderException("quackstore_evict_files list cannot contain NULL values");
         }
         res->paths.emplace_back(duckdb::StringValue::Get(val));
     }
@@ -73,8 +73,8 @@ static void ExecClearCacheFunction(duckdb::ClientContext &context, duckdb::Table
     }
 
     try {
-        auto cachefs_state = ExtensionState::RetrieveFromContext(context);
-        if (!cachefs_state) {
+        auto quackstore_state = ExtensionState::RetrieveFromContext(context);
+        if (!quackstore_state) {
             // Set output to indicate failure
             output.SetCardinality(1);
             output.data[0].SetValue(0, false);
@@ -82,11 +82,11 @@ static void ExecClearCacheFunction(duckdb::ClientContext &context, duckdb::Table
             return;
         }
 
-        cachefs::ExtensionParams params;
+        quackstore::ExtensionParams params;
         params = ExtensionParams::ReadFrom(context);
 
-        cachefs_state->GetCache().Open(params.cache_path);
-        cachefs_state->GetCache().Clear();
+        quackstore_state->GetCache().Open(params.cache_path);
+        quackstore_state->GetCache().Clear();
         // Set output to indicate success
         output.SetCardinality(1);
         output.data[0].SetValue(0, true);
@@ -105,8 +105,8 @@ static void ExecEvictFilesFunction(duckdb::ClientContext &context, duckdb::Table
         return;
     }
 
-    auto cachefs_state = ExtensionState::RetrieveFromContext(context);
-    if (!cachefs_state) {
+    auto quackstore_state = ExtensionState::RetrieveFromContext(context);
+    if (!quackstore_state) {
         // Set output to indicate failure
         output.SetCardinality(1);
         output.data[0].SetValue(0, false);
@@ -114,7 +114,7 @@ static void ExecEvictFilesFunction(duckdb::ClientContext &context, duckdb::Table
         return;
     }
     
-    auto& cache = cachefs_state->GetCache();
+    auto& cache = quackstore_state->GetCache();
     bool success = true;
     for(const auto& path: data.paths) {
         try {
@@ -132,15 +132,15 @@ static void ExecEvictFilesFunction(duckdb::ClientContext &context, duckdb::Table
 
 duckdb::TableFunctionSet GetClearCacheFunctions(duckdb::DatabaseInstance& instance)
 {
-    auto function_set = duckdb::TableFunctionSet{"cachefs_clear_cache"};
-    function_set.AddFunction(duckdb::TableFunction{"cachefs_clear_cache", {}, ExecClearCacheFunction, BindSuccessColumn});
+    auto function_set = duckdb::TableFunctionSet{"quackstore_clear_cache"};
+    function_set.AddFunction(duckdb::TableFunction{"quackstore_clear_cache", {}, ExecClearCacheFunction, BindSuccessColumn});
     return function_set;
 }
 
 duckdb::TableFunctionSet GetEvictFilesFunctions(duckdb::DatabaseInstance& instance)
 {
-    auto function_set = duckdb::TableFunctionSet{"cachefs_evict_files"};
-    function_set.AddFunction(duckdb::TableFunction{"cachefs_evict_files", {duckdb::LogicalType::LIST(duckdb::LogicalType::VARCHAR)}, ExecEvictFilesFunction, BindEvictFilesFunction});
+    auto function_set = duckdb::TableFunctionSet{"quackstore_evict_files"};
+    function_set.AddFunction(duckdb::TableFunction{"quackstore_evict_files", {duckdb::LogicalType::LIST(duckdb::LogicalType::VARCHAR)}, ExecEvictFilesFunction, BindEvictFilesFunction});
     return function_set;
 }
 
@@ -152,4 +152,4 @@ duckdb::vector<duckdb::TableFunctionSet> Functions::GetTableFunctions(duckdb::Da
     };
 }
 
-}  // namespace cachefs
+}  // namespace quackstore

@@ -1,7 +1,7 @@
 #include "block_manager.hpp"
 #include "metadata_reader.hpp"
 
-namespace cachefs {
+namespace quackstore {
 
 MetadataReader::MetadataReader(BlockManager &block_mgr)
     : block_mgr(block_mgr)
@@ -38,6 +38,10 @@ void MetadataReader::ReadData(duckdb::data_ptr_t buffer, idx_t read_size) {
     }
 }
 
+void MetadataReader::ReadData(duckdb::QueryContext context, duckdb::data_ptr_t buffer, idx_t read_size) {
+    ReadData(buffer, read_size);
+}
+
 block_id_t MetadataReader::GetNextBlockId() const
 {
     block_id_t id = BlockManager::INVALID_BLOCK_ID;
@@ -62,4 +66,4 @@ void MetadataReader::SetNextBlockId(block_id_t id)
     std::memcpy(&current_block_data[0], &id, sizeof(id));
 }
 
-}  // namespace cachefs
+}  // namespace quackstore

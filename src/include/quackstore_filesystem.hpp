@@ -3,14 +3,14 @@
 #include <duckdb.hpp>
 #include "cache.hpp"
 
-namespace cachefs {
+namespace quackstore {
 
-class CacheFileSystem : public duckdb::FileSystem {
+class QuackstoreFileSystem : public duckdb::FileSystem {
 public:
-    static constexpr const char* FILESYSTEM_NAME = "CacheFileSystem";
-    static constexpr const char* SCHEMA_PREFIX = "cachefs://";
+    static constexpr const char* FILESYSTEM_NAME = "QuackstoreFileSystem";
+    static constexpr const char* SCHEMA_PREFIX = "quackstore://";
 
-    CacheFileSystem(Cache& cache);
+    QuackstoreFileSystem(Cache& cache);
 
 public:
     // FileSystem methods
@@ -21,16 +21,16 @@ public:
     int64_t GetFileSize(duckdb::FileHandle &handle) override;
     duckdb::string GetName() const override { return FILESYSTEM_NAME; }
     bool CanHandleFile(const duckdb::string &path) override;
-    duckdb::vector<duckdb::string> Glob(const duckdb::string &path, duckdb::FileOpener *opener = nullptr) override;
+    duckdb::vector<duckdb::OpenFileInfo> Glob(const duckdb::string &path, duckdb::FileOpener *opener = nullptr) override;
     void Seek(duckdb::FileHandle &handle, idx_t location) override;
     bool OnDiskFile(duckdb::FileHandle &handle) override { return false; }
     idx_t SeekPosition(duckdb::FileHandle &handle) override;
     bool CanSeek() override { return true; }
-    time_t GetLastModifiedTime(duckdb::FileHandle &handle) override;
+    duckdb::timestamp_t GetLastModifiedTime(duckdb::FileHandle &handle) override;
     bool IsManuallySet() override { return true; }
 
 private:
     Cache& cache;
 };
 
-}  // namespace cachefs
+}  // namespace quackstore

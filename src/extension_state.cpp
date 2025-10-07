@@ -3,9 +3,9 @@
 #include "cache.hpp"
 
 
-namespace cachefs {
+namespace quackstore {
 
-const duckdb::string ExtensionState::EXTENSION_STATE_NAME = "cachefs_extension_state";
+const duckdb::string ExtensionState::EXTENSION_STATE_NAME = "quackstore_extension_state";
 
 ExtensionState::ExtensionState(Cache& cache)
 : cache(cache) 

@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 2.8.12)
+cmake_minimum_required(VERSION 3.5)
 
 # Set extension name here
-set(TARGET_NAME cachefs)
+set(TARGET_NAME quackstore)
 project(${TARGET_NAME})
 
 set(CMAKE_CXX_STANDARD 17)

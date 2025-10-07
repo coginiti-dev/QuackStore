@@ -2,7 +2,7 @@
 
 #include <duckdb/common/serializer/write_stream.hpp>
 
-namespace cachefs {
+namespace quackstore {
 
 class BlockManager;
 
@@ -32,4 +32,4 @@ private:
     duckdb::vector<block_id_t> used_metadata_blocks;
 };
 
-}  // namespace cachefs
+}  // namespace quackstore

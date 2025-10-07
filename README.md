@@ -1,10 +1,10 @@
-# DuckDB CacheFS Extension
+# DuckDB QuackStore Extension
 
-Speed up your data queries by caching remote files locally. The CacheFS extension uses **block-based caching** to automatically store frequently accessed file portions in a local cache, dramatically reducing load times for repeated queries on the same data.
+Speed up your data queries by caching remote files locally. The QuackStore extension uses **block-based caching** to automatically store frequently accessed file portions in a local cache, dramatically reducing load times for repeated queries on the same data.
 
 ## What does it do?
 
-When you query remote files (like CSV files from the web), DuckDB normally downloads them every time. With CacheFS, the first query downloads and caches the file locally. Subsequent queries use the cached version, making them much faster.
+When you query remote files (like CSV files from the web), DuckDB normally downloads them every time. With QuackStore, the first query downloads and caches the file locally. Subsequent queries use the cached version, making them much faster.
 
 **Key Benefits:**
 - ✅ **Block-based caching**: Only caches the parts of files you actually access (blocks)
@@ -18,23 +18,23 @@ When you query remote files (like CSV files from the web), DuckDB normally downl
 
 1. **Enable the extension** (if not already loaded):
    ```sql
-   INSTALL cachefs;
-   LOAD cachefs;
+   INSTALL quackstore;
+   LOAD quackstore;
    ```
 
 2. **Configure cache location**:
    ```sql
-   SET GLOBAL cachefs_cache_path = '/tmp/my_duckdb_cache.bin';
-   SET GLOBAL cachefs_cache_enabled = true;
+   SET GLOBAL quackstore_cache_path = '/tmp/my_duckdb_cache.bin';
+   SET GLOBAL quackstore_cache_enabled = true;
    ```
 
-3. **Use cached file access** by adding `cachefs://` prefix:
+3. **Use cached file access** by adding `quackstore://` prefix:
    ```sql
    -- Slow: Downloads every time
    SELECT * FROM 'https://example.com/data.csv';
    
    -- Fast: Cached after first download
-   SELECT * FROM 'cachefs://https://example.com/data.csv';
+   SELECT * FROM 'quackstore://https://example.com/data.csv';
    ```
 
 ## Configuration
@@ -43,10 +43,10 @@ When you query remote files (like CSV files from the web), DuckDB normally downl
 
 ```sql
 -- Set where to store the cache file (GLOBAL only - cache is shared across all sessions)
-SET GLOBAL cachefs_cache_path = '/path/to/cache.bin';
+SET GLOBAL quackstore_cache_path = '/path/to/cache.bin';
 
 -- Enable caching (GLOBAL only)
-SET GLOBAL cachefs_cache_enabled = true;
+SET GLOBAL quackstore_cache_enabled = true;
 ```
 
 **Note:** Cache path, size, and enabled settings are global-only because the cache is shared across all database sessions. Currently, it's not possible to have multiple per-session caches.
@@ -55,17 +55,17 @@ SET GLOBAL cachefs_cache_enabled = true;
 
 ```sql
 -- Set maximum cache size (GLOBAL only - default: 2GB)
-SET GLOBAL cachefs_cache_size = 1073741824; -- 1GB
+SET GLOBAL quackstore_cache_size = 1073741824; -- 1GB
 ```
 
 **Note:** Cache path, size, and enabled settings are global-only because the cache is shared across all database sessions. Currently, it's not possible to have multiple per-session caches.
 
 ```sql
 -- Control cache behavior for mutable vs immutable data (can be per-session or global)
-SET cachefs_data_mutable = true;  -- Per-session setting for mutable data, default setting
-SET cachefs_data_mutable = false; -- Per-session setting for immutable data (better caching)
-SET GLOBAL cachefs_data_mutable = true;  -- Global setting
-SET GLOBAL cachefs_data_mutable = false; -- Global setting
+SET quackstore_data_mutable = true;  -- Per-session setting for mutable data, default setting
+SET quackstore_data_mutable = false; -- Per-session setting for immutable data (better caching)
+SET GLOBAL quackstore_data_mutable = true;  -- Global setting
+SET GLOBAL quackstore_data_mutable = false; -- Global setting
 ```
 
 ## Usage Examples
@@ -73,25 +73,25 @@ SET GLOBAL cachefs_data_mutable = false; -- Global setting
 ### Remote Files
 ```sql
 -- Cache a CSV file from GitHub
-SELECT * FROM 'cachefs://https://raw.githubusercontent.com/owner/repo/main/data.csv';
+SELECT * FROM 'quackstore://https://raw.githubusercontent.com/owner/repo/main/data.csv';
 
 -- Cache a single Parquet file from S3
-SELECT * FROM parquet_scan('cachefs://s3://example_bucket/data/file.parquet');
+SELECT * FROM parquet_scan('quackstore://s3://example_bucket/data/file.parquet');
 
 -- Cache whole Iceberg catalog from S3
-SELECT * FROM iceberg_scan('cachefs://s3://example_bucket/iceberg/catalog');
+SELECT * FROM iceberg_scan('quackstore://s3://example_bucket/iceberg/catalog');
 
 -- Cache any web resource
-SELECT content FROM read_text('cachefs://https://example.com/file.txt');
+SELECT content FROM read_text('quackstore://https://example.com/file.txt');
 ```
 
-### When to Use CacheFS
+### When to Use QuackStore
 
 ✅ **Good for:**
 - Large files you query repeatedly
 - Remote files (HTTP/HTTPS URLs, S3, etc.)
 - Slow network connections
-- Both static and changing data (use appropriate `cachefs_data_mutable` setting)
+- Both static and changing data (use appropriate `quackstore_data_mutable` setting)
 
 ❌ **Don't use for:**
 - Local files (already fast)
@@ -99,11 +99,11 @@ SELECT content FROM read_text('cachefs://https://example.com/file.txt');
 
 ### Data Mutability Settings
 
-The `cachefs_data_mutable` parameter controls how aggressively the cache validates data freshness:
+The `quackstore_data_mutable` parameter controls how aggressively the cache validates data freshness:
 
 **For immutable data** (recommended for most analytics workloads):
 ```sql
-SET cachefs_data_mutable = false;
+SET quackstore_data_mutable = false;
 ```
 - Files are assumed not to change once cached
 - Maximum performance (no validation checks)
@@ -111,7 +111,7 @@ SET cachefs_data_mutable = false;
 
 **For mutable data** (default behavior):
 ```sql
-SET cachefs_data_mutable = true;
+SET quackstore_data_mutable = true;
 ```
 - Cache validates file freshness on access
 - Performs lightweight metadata checks (modification time and file size) - these are small requests that don't download the whole file
@@ -126,34 +126,34 @@ SET cachefs_data_mutable = true;
 
 ```sql
 -- Clear all cached data
-CALL cachefs_clear_cache();
+CALL quackstore_clear_cache();
 
--- Remove specific files from cache (must include cachefs:// prefix)
-CALL cachefs_evict_files(['cachefs://https://example.com/data.csv']);
+-- Remove specific files from cache (must include quackstore:// prefix)
+CALL quackstore_evict_files(['quackstore://https://example.com/data.csv']);
 
 -- Remove multiple files from cache
-CALL cachefs_evict_files([
-    'cachefs://https://example.com/file1.csv',
-    'cachefs://https://example.com/file2.parquet',
-    'cachefs://s3://bucket/data/file3.json'
+CALL quackstore_evict_files([
+    'quackstore://https://example.com/file1.csv',
+    'quackstore://https://example.com/file2.parquet',
+    'quackstore://s3://bucket/data/file3.json'
 ]);
 
 -- Check current settings
-SELECT current_setting('cachefs_cache_enabled');
-SELECT current_setting('cachefs_cache_path');
-SELECT current_setting('cachefs_cache_size');
-SELECT current_setting('cachefs_data_mutable');
+SELECT current_setting('quackstore_cache_enabled');
+SELECT current_setting('quackstore_cache_path');
+SELECT current_setting('quackstore_cache_size');
+SELECT current_setting('quackstore_data_mutable');
 ```
 
 ### Cache Management Functions
 
-- **`cachefs_clear_cache()`**: Removes all cached data and resets the cache
+- **`quackstore_clear_cache()`**: Removes all cached data and resets the cache
   - Safe to call multiple times or when cache doesn't exist
   - Works even when caching is disabled
 
-- **`cachefs_evict_files(['cachefs://file1', 'cachefs://file2', ...])`**: Removes specific files from the cache
-  - **Important**: File paths must include the `cachefs://` prefix, exactly as used in queries
-  - Takes a list of file paths with the prefix: `['cachefs://https://example.com/data.csv']`
+- **`quackstore_evict_files(['quackstore://file1', 'quackstore://file2', ...])`**: Removes specific files from the cache
+  - **Important**: File paths must include the `quackstore://` prefix, exactly as used in queries
+  - Takes a list of file paths with the prefix: `['quackstore://https://example.com/data.csv']`
   - Useful for removing outdated files without clearing the entire cache
   - Safe to call with non-existent files (no error)
   - Validates input parameters and provides clear error messages for invalid arguments
@@ -182,13 +182,13 @@ When you access a cached file:
 ## Troubleshooting
 
 **Cache not working?**
-- Check that `cachefs_cache_enabled = true`
-- Ensure `cachefs_cache_path` is set to a writable location
-- Make sure you're using the `cachefs://` prefix
+- Check that `quackstore_cache_enabled = true`
+- Ensure `quackstore_cache_path` is set to a writable location
+- Make sure you're using the `quackstore://` prefix
 
 **Cache file growing too large?**
-- Adjust `cachefs_cache_size` setting
-- Use `cachefs_clear_cache()` to reset
+- Adjust `quackstore_cache_size` setting
+- Use `quackstore_clear_cache()` to reset
 
 **Still slow?**
 - Cache works best for repeated queries on the same files
@@ -196,18 +196,18 @@ When you access a cached file:
 - Very small files may not benefit much
 
 **Function errors?**
-- `cachefs_evict_files` requires file paths with `cachefs://` prefix: use `['cachefs://https://example.com/file.csv']`
-- `cachefs_evict_files` requires a list of strings: use proper list syntax with quotes
+- `quackstore_evict_files` requires file paths with `quackstore://` prefix: use `['quackstore://https://example.com/file.csv']`
+- `quackstore_evict_files` requires a list of strings: use proper list syntax with quotes
 - Empty lists need explicit casting: use `[]::VARCHAR[]` instead of `[]`
 - NULL arguments are not allowed: ensure all parameters are valid
-- For subqueries, extract to variable first: `SET files = (SELECT list(...)); CALL cachefs_evict_files(getvariable('files'));`
+- For subqueries, extract to variable first: `SET files = (SELECT list(...)); CALL quackstore_evict_files(getvariable('files'));`
 
 ## Building and Installation
 
 For most users, the extension can be installed directly:
 ```sql
-INSTALL cachefs;
-LOAD cachefs;
+INSTALL quackstore;
+LOAD quackstore;
 ```
 
 For building from source, see the build instructions in the original documentation.

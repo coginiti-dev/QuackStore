@@ -1,7 +1,7 @@
 #include "block_manager.hpp"
 #include "metadata_writer.hpp"
 
-namespace cachefs {
+namespace quackstore {
 
 MetadataWriter::MetadataWriter(BlockManager &block_mgr, block_id_t start_block_id)
     : block_mgr(block_mgr)
@@ -69,4 +69,4 @@ void MetadataWriter::Reset()
     std::fill(current_block_data.begin(), current_block_data.end(), 0xFF);
 }
 
-}  // namespace cachefs
+}  // namespace quackstore

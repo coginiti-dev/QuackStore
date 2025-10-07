@@ -9,12 +9,12 @@
 #include <duckdb/main/client_context_file_opener.hpp>
 #include <duckdb/execution/operator/helper/physical_set.hpp>
 
-#include "cache_file_system.hpp"
-#include "cache_params.hpp"
+#include "quackstore_filesystem.hpp"
+#include "quackstore_params.hpp"
 #include "cache.hpp"
 #include "extension_state.hpp"
 
-using namespace cachefs;
+using namespace quackstore;
 
 namespace {
     duckdb::string StripPrefix(const duckdb::string &text, const duckdb::string &prefix) {
@@ -67,7 +67,7 @@ namespace {
             return use_own_filesize ? filesize : duckdb::LocalFileSystem::GetFileSize(handle);
         }
 
-        time_t GetLastModifiedTime(duckdb::FileHandle &handle) override
+        duckdb::timestamp_t GetLastModifiedTime(duckdb::FileHandle &handle) override
         {
             for(auto& cb: on_get_lastmodified_callbacks)
             {
@@ -95,7 +95,7 @@ namespace {
         duckdb::vector<on_get_lastmodified_callback> on_get_lastmodified_callbacks;
         duckdb::vector<on_get_filesize_callback> on_get_filesize_callbacks;
 
-        void SetLastModified(time_t val)
+        void SetLastModified(duckdb::timestamp_t val)
         {
             last_modified = val;
             use_own_last_modified = true;
@@ -120,7 +120,7 @@ namespace {
         duckdb::string prefix;
 
         bool use_own_last_modified = false;
-        time_t last_modified = 0;
+        duckdb::timestamp_t last_modified;
         bool use_own_filesize = false;
         int64_t filesize = 0;
     };
@@ -157,7 +157,7 @@ public:
     duckdb::DuckDB duckdb;
 };
 
-TEST_CASE_METHOD(WithDuckDB, "Reading a file", "[cachefs]") {
+TEST_CASE_METHOD(WithDuckDB, "Reading a file", "[quackstore]") {
     const auto CACHE_PATH = "/tmp/cache.bin";
     RemoveLocalFile(CACHE_PATH);
     auto cache = duckdb::make_uniq<Cache>(16);
@@ -165,15 +165,15 @@ TEST_CASE_METHOD(WithDuckDB, "Reading a file", "[cachefs]") {
 
     auto& main_fs_ref = GetDBInstance().GetFileSystem();
 
-    auto cache_fs = duckdb::make_uniq<CacheFileSystem>(*cache);
-    main_fs_ref.UnregisterSubSystem(CacheFileSystem::FILESYSTEM_NAME);
+    auto cache_fs = duckdb::make_uniq<QuackstoreFileSystem>(*cache);
+    main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
     main_fs_ref.RegisterSubSystem(std::move(cache_fs));
 
-    const duckdb::string FILE_PATH = CacheFileSystem::SCHEMA_PREFIX + duckdb::string{"test/testdata/read_test.txt"};
+    const duckdb::string FILE_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + duckdb::string{"test/testdata/read_test.txt"};
     const duckdb::string FILE_CONTENT = "This is a text.\n";
     SECTION("with disabled cache") {
         auto& config = duckdb::DBConfig::GetConfig(GetDBInstance());
-        config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED, duckdb::Value::BOOLEAN(false));
+        config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED, duckdb::Value::BOOLEAN(false));
 
         SECTION("reading whole file") {
             auto file_handle =
@@ -191,8 +191,8 @@ TEST_CASE_METHOD(WithDuckDB, "Reading a file", "[cachefs]") {
 
     SECTION("with enabled cache") {
         auto& config = duckdb::DBConfig::GetConfig(GetDBInstance());
-        config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED, duckdb::Value::BOOLEAN(true));
-        config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_SIZE, duckdb::Value::UBIGINT(128));
+        config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED, duckdb::Value::BOOLEAN(true));
+        config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_SIZE, duckdb::Value::UBIGINT(128));
 
         SECTION("reading full file") {
             auto file_handle =
@@ -263,26 +263,26 @@ TEST_CASE_METHOD(WithDuckDB, "Reading a file", "[cachefs]") {
     }
 }
 
-TEST_CASE_METHOD(WithDuckDB, "Clear cache exception with open files", "[cachefs]") {
+TEST_CASE_METHOD(WithDuckDB, "Clear cache exception with open files", "[quackstore]") {
     const auto CACHE_PATH = "/tmp/cache.bin";
     RemoveLocalFile(CACHE_PATH);
     auto cache = Cache{16};
     cache.Open(CACHE_PATH);
 
     auto& main_fs_ref = GetDBInstance().GetFileSystem();
-    main_fs_ref.UnregisterSubSystem(CacheFileSystem::FILESYSTEM_NAME);
-    auto cache_fs = duckdb::make_uniq<CacheFileSystem>(cache);
+    main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
+    auto cache_fs = duckdb::make_uniq<QuackstoreFileSystem>(cache);
 
     main_fs_ref.RegisterSubSystem(std::move(cache_fs));
 
     auto& config = duckdb::DBConfig::GetConfig(GetDBInstance());
     config.SetOptionsByName({
-        {ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED, duckdb::Value::BOOLEAN(true)},
-        {ExtensionParams::PARAM_NAME_CACHEFS_CACHE_SIZE, duckdb::Value::UBIGINT(128)}
+        {ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED, duckdb::Value::BOOLEAN(true)},
+        {ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_SIZE, duckdb::Value::UBIGINT(128)}
     });
 
     // Open a file to ensure the file count is not zero
-    const duckdb::string FILE_PATH = CacheFileSystem::SCHEMA_PREFIX + duckdb::string{"test/testdata/read_test.txt"};
+    const duckdb::string FILE_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + duckdb::string{"test/testdata/read_test.txt"};
     auto file_handle =
         main_fs_ref.OpenFile(FILE_PATH, duckdb::FileOpenFlags::FILE_FLAGS_READ);
 
@@ -294,13 +294,13 @@ TEST_CASE_METHOD(WithDuckDB, "Clear cache exception with open files", "[cachefs]
     REQUIRE_NOTHROW(cache.Close());
 }
 
-TEST_CASE_METHOD(WithDuckDB, "Migrate V1 cache to V2", "[cachefs][migration]") {
+TEST_CASE_METHOD(WithDuckDB, "Migrate V1 cache to V2", "[quackstore][migration]") {
     const auto CACHE_PATH = "/tmp/cache.bin";
     auto& main_fs_ref = GetDBInstance().GetFileSystem();
 
     SECTION("Prepare v1 cache")
     {
-        const auto V1_CACHE_PATH = "test/testdata/ut/cachefs/test_last_modified/cache_v1.bin";
+        const auto V1_CACHE_PATH = "test/testdata/ut/quackstore/test_last_modified/cache_v1.bin";
         auto local_fs = duckdb::FileSystem::CreateLocal();
         auto handle_src = local_fs->OpenFile(V1_CACHE_PATH, duckdb::FileFlags::FILE_FLAGS_READ);
         REQUIRE(handle_src);
@@ -321,12 +321,12 @@ TEST_CASE_METHOD(WithDuckDB, "Migrate V1 cache to V2", "[cachefs][migration]") {
     const uint64_t BLOCK_SIZE = Bytes(16);
 
     auto& config = duckdb::DBConfig::GetConfig(GetDBInstance());
-    config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED, duckdb::Value::BOOLEAN(true));
-    config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_SIZE, duckdb::Value::UBIGINT(1024));
-    config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_PATH, duckdb::Value{CACHE_PATH});
+    config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED, duckdb::Value::BOOLEAN(true));
+    config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_SIZE, duckdb::Value::UBIGINT(1024));
+    config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_PATH, duckdb::Value{CACHE_PATH});
 
     const duckdb::string FILE_PATH = "test/testdata/read_test.txt";
-    const duckdb::string CACHED_FILE_PATH = CacheFileSystem::SCHEMA_PREFIX + FILE_PATH;
+    const duckdb::string CACHED_FILE_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + FILE_PATH;
     const auto READ_FLAGS = duckdb::FileOpenFlags::FILE_FLAGS_READ;
 
     SECTION("V1 cache - without last_modified timestamp on files") {
@@ -335,41 +335,41 @@ TEST_CASE_METHOD(WithDuckDB, "Migrate V1 cache to V2", "[cachefs][migration]") {
 
         MetadataManager::FileMetadata md;
         REQUIRE(cache.RetrieveFileMetadata(FILE_PATH, md) == true);
-        CHECK(md.last_modified == 0);
+        CHECK(md.last_modified == duckdb::timestamp_t::epoch());
     }
 
-    SECTION("Cache is now V2, but still no last_modified timestamp on files - there were no requests to fetch/update it") {
+    SECTION("Cache is now V3, but still no last_modified timestamp on files - there were no requests to fetch/update it") {
         auto cache = Cache{BLOCK_SIZE};
         cache.Open(CACHE_PATH);
 
         MetadataManager::FileMetadata md;
         REQUIRE(cache.RetrieveFileMetadata(FILE_PATH, md) == true);
-        CHECK(md.last_modified == 0);
+        CHECK(md.last_modified == duckdb::timestamp_t::epoch());
     }
 
-    SECTION("Cache is V2, let's trigger an update of last_modified timestamp") {
+    SECTION("Cache is V3, let's trigger an update of last_modified timestamp") {
         duckdb::unique_ptr<Cache> cache = duckdb::make_uniq<Cache>(BLOCK_SIZE);
         Cache& _cache_ref = *cache; // For testing purposes, we need to access the cache
-        auto cache_fs = duckdb::make_uniq<CacheFileSystem>(*cache);
+        auto cache_fs = duckdb::make_uniq<QuackstoreFileSystem>(*cache);
 
-        main_fs_ref.UnregisterSubSystem(CacheFileSystem::FILESYSTEM_NAME);
+        main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
         main_fs_ref.RegisterSubSystem(std::move(cache_fs));
 
         auto file_handle = main_fs_ref.OpenFile(CACHED_FILE_PATH, READ_FLAGS);
         const auto last_modified = main_fs_ref.GetLastModifiedTime(*file_handle); //trigger an update of last_modified timestamp
-        CHECK(last_modified > 0);
+        CHECK(last_modified > duckdb::timestamp_t::epoch());
 
         MetadataManager::FileMetadata md;
         REQUIRE(_cache_ref.RetrieveFileMetadata(CACHED_FILE_PATH, md) == true);
         CHECK(md.last_modified == last_modified);
     }
 
-    SECTION("Cache is V2, and it should have last_modified timestamp") {
+    SECTION("Cache is V3, and it should have last_modified timestamp") {
         duckdb::unique_ptr<Cache> cache = duckdb::make_uniq<Cache>(BLOCK_SIZE);
         Cache& _cache_ref = *cache; // For testing purposes, we need to access the cache
-        auto cache_fs = duckdb::make_uniq<CacheFileSystem>(*cache);
+        auto cache_fs = duckdb::make_uniq<QuackstoreFileSystem>(*cache);
 
-        main_fs_ref.UnregisterSubSystem(CacheFileSystem::FILESYSTEM_NAME);
+        main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
         main_fs_ref.RegisterSubSystem(std::move(cache_fs));
 
         auto file_handle = main_fs_ref.OpenFile(CACHED_FILE_PATH, READ_FLAGS);
@@ -377,7 +377,7 @@ TEST_CASE_METHOD(WithDuckDB, "Migrate V1 cache to V2", "[cachefs][migration]") {
         MetadataManager::FileMetadata md;
         REQUIRE(_cache_ref.RetrieveFileMetadata(CACHED_FILE_PATH, md) == true);
         const auto last_modified = md.last_modified;
-        CHECK(last_modified > 0);
+        CHECK(last_modified > duckdb::timestamp_t::epoch());
         CHECK(main_fs_ref.GetLastModifiedTime(*file_handle) == last_modified);
 
         SECTION("At the end make sure the file content is correct") {
@@ -396,12 +396,12 @@ TEST_CASE_METHOD(WithDuckDB, "Migrate V1 cache to V2", "[cachefs][migration]") {
     }
 }
 
-TEST_CASE_METHOD(WithDuckDB, "Fallback to other VFS subsystems", "[cachefs]") {
+TEST_CASE_METHOD(WithDuckDB, "Fallback to other VFS subsystems", "[quackstore]") {
     const duckdb::string CACHE_PATH = "/tmp/cache.bin";
     const duckdb::string TEST_FS_PREFIX = "test://";
     const duckdb::string FILENAME = "test/testdata/read_test.txt";
     const duckdb::string FILE_URI = TEST_FS_PREFIX + FILENAME;
-    const duckdb::string CACHED_FILE_URI = CacheFileSystem::SCHEMA_PREFIX + FILE_URI;
+    const duckdb::string CACHED_FILE_URI = QuackstoreFileSystem::SCHEMA_PREFIX + FILE_URI;
 
     // Prepare test file systems
     auto test_fs = duckdb::make_uniq<TestFileSystem>(TEST_FS_PREFIX);
@@ -425,18 +425,18 @@ TEST_CASE_METHOD(WithDuckDB, "Fallback to other VFS subsystems", "[cachefs]") {
     // Prepare cache file system
     RemoveLocalFile(CACHE_PATH);
     auto& config = duckdb::DBConfig::GetConfig(GetDBInstance());
-    config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_PATH, duckdb::Value{CACHE_PATH});
+    config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_PATH, duckdb::Value{CACHE_PATH});
 
     auto cache = duckdb::make_uniq<Cache>(1024);
-    auto cache_fs = duckdb::make_uniq<CacheFileSystem>(*cache);
+    auto cache_fs = duckdb::make_uniq<QuackstoreFileSystem>(*cache);
     SECTION("Test cache file system creation") {
-        CHECK(cache_fs->GetName() == "CacheFileSystem");
+        CHECK(cache_fs->GetName() == "QuackstoreFileSystem");
         CHECK(cache_fs->CanHandleFile(CACHED_FILE_URI));
         CHECK(cache_fs->CanHandleFile(FILE_URI) == false);
     }
 
     auto& main_fs_ref = GetDBInstance().GetFileSystem();
-    main_fs_ref.UnregisterSubSystem(CacheFileSystem::FILESYSTEM_NAME);
+    main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
     main_fs_ref.RegisterSubSystem(std::move(cache_fs));
     main_fs_ref.RegisterSubSystem(std::move(test_fs));
 
@@ -463,26 +463,26 @@ TEST_CASE_METHOD(WithDuckDB, "Fallback to other VFS subsystems", "[cachefs]") {
         CHECK(read_requests.size() == 1);
         for(const auto& [uri, count] : read_requests) {
             INFO("Accessed for read, file" << uri << ", count: " << count);
-            CHECK(count == COUNT); // Not using cachefs, hence multiple reads
+            CHECK(count == COUNT); // Not using quackstore, hence multiple reads
         }
     }
 
     SECTION("Open file with cache_fs (cache disabled)") {
-        // Disable cache in CacheFileSystem
-        config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED, duckdb::Value::BOOLEAN(false));
+        // Disable cache in QuackstoreFileSystem
+        config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED, duckdb::Value::BOOLEAN(false));
 
         DefaultChecks(CACHED_FILE_URI, COUNT);
 
         CHECK(read_requests.size() == 1);
         for(const auto& [uri, count] : read_requests) {
             INFO("Accessed for read, file" << uri << ", count: " << count);
-            CHECK(count == COUNT); // Not using cachefs, hence multiple reads
+            CHECK(count == COUNT); // Not using quackstore, hence multiple reads
         }
     }
 
     SECTION("Open file with cache_fs (cache enabled)") {
-        // Enable cache in CacheFileSystem
-        config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED, duckdb::Value::BOOLEAN(true));
+        // Enable cache in QuackstoreFileSystem
+        config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED, duckdb::Value::BOOLEAN(true));
 
         DefaultChecks(CACHED_FILE_URI, COUNT);
 
@@ -504,12 +504,12 @@ TEST_CASE_METHOD(WithDuckDB, "Fallback to other VFS subsystems", "[cachefs]") {
     }
 }
 
-TEST_CASE_METHOD(WithDuckDB, "Simulate file updates", "[cachefs]") {
+TEST_CASE_METHOD(WithDuckDB, "Simulate file updates", "[quackstore]") {
     const duckdb::string CACHE_PATH = "/tmp/cache.bin";
     const duckdb::string TEST_FS_PREFIX = "test://";
     const duckdb::string FILENAME = "/tmp/simulate_file_updates.txt";
     const duckdb::string FILE_URI = TEST_FS_PREFIX + FILENAME;
-    const duckdb::string CACHED_FILE_URI = CacheFileSystem::SCHEMA_PREFIX + FILE_URI;
+    const duckdb::string CACHED_FILE_URI = QuackstoreFileSystem::SCHEMA_PREFIX + FILE_URI;
 
     // Prepare test file systems
     auto test_fs = duckdb::make_uniq<TestFileSystem>(TEST_FS_PREFIX);
@@ -530,14 +530,14 @@ TEST_CASE_METHOD(WithDuckDB, "Simulate file updates", "[cachefs]") {
     // Prepare cache file system
     RemoveLocalFile(CACHE_PATH);
     auto& config = duckdb::DBConfig::GetConfig(GetDBInstance());
-    config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_PATH, duckdb::Value{CACHE_PATH});
-    config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED, duckdb::Value::BOOLEAN(true));
+    config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_PATH, duckdb::Value{CACHE_PATH});
+    config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED, duckdb::Value::BOOLEAN(true));
 
     auto cache = duckdb::make_uniq<Cache>(1024);
-    auto cache_fs = duckdb::make_uniq<CacheFileSystem>(*cache);
+    auto cache_fs = duckdb::make_uniq<QuackstoreFileSystem>(*cache);
 
     auto& main_fs_ref = GetDBInstance().GetFileSystem();
-    main_fs_ref.UnregisterSubSystem(CacheFileSystem::FILESYSTEM_NAME);
+    main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
     main_fs_ref.RegisterSubSystem(std::move(cache_fs));
     main_fs_ref.RegisterSubSystem(std::move(test_fs));
 
@@ -575,7 +575,7 @@ TEST_CASE_METHOD(WithDuckDB, "Simulate file updates", "[cachefs]") {
     auto QUACK = duckdb::vector<uint8_t>{'q','u','a','c','k'};
 
     CreateBlankFile();
-    test_fs_ref.SetLastModified(0); //force lastmodified = 0 on file
+    test_fs_ref.SetLastModified(duckdb::timestamp_t::epoch()); //force lastmodified = 0 on file
     OpenCachedFile(); //warm up the metadata cache
     test_fs_ref.ResetLastModified();
 
@@ -589,7 +589,7 @@ TEST_CASE_METHOD(WithDuckDB, "Simulate file updates", "[cachefs]") {
         ClearRequests();
         
         // Simulate file update by changing last_modified
-        test_fs_ref.SetLastModified(time(nullptr) + 100);
+        test_fs_ref.SetLastModified(duckdb::timestamp_t::epoch() + 100);
         auto handle2 = OpenCachedFile();
         
         CHECK(get_lastmodified_requests == 1); // Should check underlying
@@ -597,7 +597,7 @@ TEST_CASE_METHOD(WithDuckDB, "Simulate file updates", "[cachefs]") {
     }
 
     SECTION("File update detected via filesize change when last_modified=0") {
-        test_fs_ref.SetLastModified(0);
+        test_fs_ref.SetLastModified(duckdb::timestamp_t::epoch());
         WriteToUnderlyingFile(QUACK);
         auto handle1 = OpenCachedFile(); // Cache initial state
         ClearRequests();
@@ -619,7 +619,7 @@ TEST_CASE_METHOD(WithDuckDB, "Simulate file updates", "[cachefs]") {
         ClearRequests();
 
         // Modify file to trigger eviction
-        test_fs_ref.SetLastModified(time(nullptr) + 100);
+        test_fs_ref.SetLastModified(duckdb::timestamp_t::epoch() + 100);
         auto handle2 = OpenCachedFile();
 
         ClearRequests();
@@ -633,7 +633,7 @@ TEST_CASE_METHOD(WithDuckDB, "Simulate file updates", "[cachefs]") {
         ClearRequests();
 
         // Set both to problematic values
-        test_fs_ref.SetLastModified(0);
+        test_fs_ref.SetLastModified(duckdb::timestamp_t::epoch());
         test_fs_ref.SetFileSize(0);
         auto handle2 = OpenCachedFile();
 
@@ -657,7 +657,7 @@ TEST_CASE_METHOD(WithDuckDB, "Simulate file updates", "[cachefs]") {
     }
 
     SECTION("Underlying filesize requested only when needed") {
-        test_fs_ref.SetLastModified(0);
+        test_fs_ref.SetLastModified(duckdb::timestamp_t::epoch());
         WriteToUnderlyingFile(QUACK);
         auto handle1 = OpenCachedFile();
         ClearRequests();
@@ -675,7 +675,7 @@ TEST_CASE_METHOD(WithDuckDB, "Simulate file updates", "[cachefs]") {
 }
 
 // Tests dynamic cache path reconfiguration across multiple database connections
-TEST_CASE_METHOD(WithDuckDB, "Dynamic cache path reconfiguration across multiple connections", "[cachefs]") {
+TEST_CASE_METHOD(WithDuckDB, "Dynamic cache path reconfiguration across multiple connections", "[quackstore]") {
     auto local_fs = duckdb::FileSystem::CreateLocal();
 
     // Prepare multiple cache file paths for testing dynamic reconfiguration
@@ -689,7 +689,7 @@ TEST_CASE_METHOD(WithDuckDB, "Dynamic cache path reconfiguration across multiple
 
     // Setup test file systems and create cached file URIs
     const duckdb::string FILENAME = "test/testdata/read_test.txt";
-    const duckdb::string CACHED_FILENAME = CacheFileSystem::SCHEMA_PREFIX + FILENAME;
+    const duckdb::string CACHED_FILENAME = QuackstoreFileSystem::SCHEMA_PREFIX + FILENAME;
 
     // Helper to read files and trigger cache operations
     const auto SelectFromFileAndCheck = [&](duckdb::Connection& con, const duckdb::string& uri) {
@@ -703,7 +703,7 @@ TEST_CASE_METHOD(WithDuckDB, "Dynamic cache path reconfiguration across multiple
 
     // Clean up default cache path
     auto opener = duckdb::DatabaseFileOpener{GetDBInstance()};
-    cachefs::ExtensionParams params = cachefs::ExtensionParams::ReadFrom(&opener);
+    quackstore::ExtensionParams params = quackstore::ExtensionParams::ReadFrom(&opener);
     RemoveLocalFile(params.cache_path);
 
     // Create multiple connections to the same database instance
@@ -714,7 +714,7 @@ TEST_CASE_METHOD(WithDuckDB, "Dynamic cache path reconfiguration across multiple
         auto con = duckdb::make_uniq<duckdb::Connection>(GetDBInstance());
         if (i == 0)
         {
-            auto query_set = duckdb::StringUtil::Format("SET GLOBAL %s = 'true';", ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED);
+            auto query_set = duckdb::StringUtil::Format("SET GLOBAL %s = 'true';", ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED);
             auto res_set = con->Query(query_set);
             REQUIRE(res_set->HasError() == false);
         }
@@ -731,7 +731,7 @@ TEST_CASE_METHOD(WithDuckDB, "Dynamic cache path reconfiguration across multiple
         
         // Change cache path globally - should affect all connections
         auto res_set = connections.front()->Query(
-            duckdb::StringUtil::Format("SET GLOBAL %s = '%s';", ExtensionParams::PARAM_NAME_CACHEFS_CACHE_PATH, cache_path)
+            duckdb::StringUtil::Format("SET GLOBAL %s = '%s';", ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_PATH, cache_path)
         );
         REQUIRE(res_set->HasError() == false);
 
@@ -749,7 +749,7 @@ TEST_CASE_METHOD(WithDuckDB, "Dynamic cache path reconfiguration across multiple
     CHECK(1 == 1);
 }
 
-TEST_CASE_METHOD(WithDuckDB, "CacheFileHandle constructor exception handling preserves reference count", "[cachefs][exception-handling]") {
+TEST_CASE_METHOD(WithDuckDB, "CacheFileHandle constructor exception handling preserves reference count", "[quackstore][exception-handling]") {
     const auto CACHE_PATH = "/tmp/cache_exception_test.bin";
     RemoveLocalFile(CACHE_PATH);
 
@@ -757,15 +757,15 @@ TEST_CASE_METHOD(WithDuckDB, "CacheFileHandle constructor exception handling pre
     cache->Open(CACHE_PATH);
 
     auto& main_fs_ref = GetDBInstance().GetFileSystem();
-    auto cache_fs = duckdb::make_uniq<CacheFileSystem>(*cache);
+    auto cache_fs = duckdb::make_uniq<QuackstoreFileSystem>(*cache);
 
-    main_fs_ref.UnregisterSubSystem(CacheFileSystem::FILESYSTEM_NAME);
+    main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
     main_fs_ref.RegisterSubSystem(std::move(cache_fs));
 
     auto& config = duckdb::DBConfig::GetConfig(GetDBInstance());
-    config.SetOptionByName(ExtensionParams::PARAM_NAME_CACHEFS_CACHE_ENABLED, duckdb::Value::BOOLEAN(true));
+    config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED, duckdb::Value::BOOLEAN(true));
 
-    const duckdb::string FILE_PATH = CacheFileSystem::SCHEMA_PREFIX + duckdb::string{"test/testdata/read_test.txt"};
+    const duckdb::string FILE_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + duckdb::string{"test/testdata/read_test.txt"};
 
     SECTION("Reference count properly managed when constructor throws exception") {
         // First, verify Clear() works when no files are open (reference count is 0)
@@ -773,7 +773,7 @@ TEST_CASE_METHOD(WithDuckDB, "CacheFileHandle constructor exception handling pre
 
         // Create a scenario where CacheFileHandle constructor will throw
         // We'll use a non-existent file to trigger an exception during initialization
-        const duckdb::string INVALID_FILE_PATH = CacheFileSystem::SCHEMA_PREFIX + duckdb::string{"nonexistent/file/path.txt"};
+        const duckdb::string INVALID_FILE_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + duckdb::string{"nonexistent/file/path.txt"};
 
         // Try to open the non-existent file, which should throw an exception
         REQUIRE_THROWS(main_fs_ref.OpenFile(INVALID_FILE_PATH, duckdb::FileOpenFlags::FILE_FLAGS_READ));
@@ -825,7 +825,7 @@ TEST_CASE_METHOD(WithDuckDB, "CacheFileHandle constructor exception handling pre
         // Test with a mock filesystem that can trigger exceptions
         class ThrowingFileSystem : public duckdb::LocalFileSystem {
         public:
-            time_t GetLastModifiedTime(duckdb::FileHandle &handle) override {
+            duckdb::timestamp_t GetLastModifiedTime(duckdb::FileHandle &handle) override {
                 if (should_throw) {
                     throw std::runtime_error("Simulated filesystem error");
                 }
@@ -839,8 +839,8 @@ TEST_CASE_METHOD(WithDuckDB, "CacheFileHandle constructor exception handling pre
 
         // Try various invalid file operations that might cause exceptions
         const duckdb::vector<duckdb::string> invalid_paths = {
-            duckdb::string{CacheFileSystem::SCHEMA_PREFIX} + "/dev/null/invalid",  // Invalid path
-            duckdb::string{CacheFileSystem::SCHEMA_PREFIX} + "",  // Empty path after prefix
+            duckdb::string{QuackstoreFileSystem::SCHEMA_PREFIX} + "/dev/null/invalid",  // Invalid path
+            duckdb::string{QuackstoreFileSystem::SCHEMA_PREFIX} + "",  // Empty path after prefix
         };
 
         for (const auto& invalid_path : invalid_paths) {

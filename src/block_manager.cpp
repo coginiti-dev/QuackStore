@@ -8,10 +8,10 @@
 
 namespace 
 {
-    const uint32_t BLOCK_CACHE_DATA_FILE_VERSION_NUMBER = 2;
+    const uint32_t BLOCK_CACHE_DATA_FILE_VERSION_NUMBER = 3;
 }
 
-namespace cachefs {
+namespace quackstore {
 
 // =============================================================================
 // BlockCacheDataFileHeader
@@ -117,7 +117,7 @@ BlockCacheDataFileHeader BlockManager::CreateNewDatabase(const duckdb::string &p
     duckdb::MemoryStream mem;
     header.Write(mem);
 
-    handle->Write(mem.GetData(), mem.GetPosition(), 0);
+    fs->Write(*handle, mem.GetData(), mem.GetPosition(), 0);
     handle->Sync();
 
     if (out) *out = LoadResult::CREATED_NEW;
@@ -181,7 +181,7 @@ void BlockManager::WriteHeader() {
     duckdb::MemoryStream mem;
     header.Write(mem);
 
-    handle->Write(mem.GetData(), mem.GetPosition(), 0);
+    fs->Write(*handle, mem.GetData(), mem.GetPosition(), 0);
     handle->Sync();
 }
 
@@ -217,7 +217,7 @@ void BlockManager::StoreBlock(block_id_t block_id, const duckdb::vector<uint8_t>
     ValidateHandle();
 
     auto offset = GetBlockOffset(block_id);
-    handle->Write(const_cast<duckdb::data_ptr_t>(data.data()), data.size(), offset);
+    fs->Write(*handle, const_cast<duckdb::data_ptr_t>(data.data()), data.size(), offset);
 }
 
 void BlockManager::RetrieveBlock(block_id_t block_id, duckdb::vector<uint8_t> &data) {
@@ -333,4 +333,4 @@ void BlockManager::CloseInternal()
     CloseHandle();
 }
 
-}  // namespace cachefs
+}  // namespace quackstore

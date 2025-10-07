@@ -1,7 +1,7 @@
 PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 # Configuration of extension
-EXT_NAME=cachefs
+EXT_NAME=quackstore
 EXT_CONFIG=${PROJ_DIR}extension_config.cmake
 
 # We need this for testing
@@ -33,11 +33,11 @@ duckdb/release:
 ###
 .PHONY: test/unit/debug
 test/unit/debug:
-	./build/debug/extension/cachefs/test/unittest/unittest_cachefs
+	./build/debug/extension/quackstore/test/unittest/unittest_quackstore
 
 .PHONY: test/unit/release
 test/unit/release:
-	./build/release/extension/cachefs/test/unittest/unittest_cachefs
+	./build/release/extension/quackstore/test/unittest/unittest_quackstore
 
 ###
 ### Run SQL tests
@@ -48,10 +48,10 @@ test/unit/release:
 ###
 ### Run unit and SQL tests
 ###
-.PHONY: test/cachefs/debug
-test/cachefs/debug: test/unit/debug test_debug
+.PHONY: test/quackstore/debug
+test/quackstore/debug: test/unit/debug test_debug
 	@echo > /dev/null
 
-.PHONY: test/cachefs/release
-test/cachefs/release: test/unit/release test_release
+.PHONY: test/quackstore/release
+test/quackstore/release: test/unit/release test_release
 	@echo > /dev/null

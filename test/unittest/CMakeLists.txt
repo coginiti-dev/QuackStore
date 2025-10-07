@@ -6,10 +6,10 @@ include_directories(${DuckDB_SOURCE_DIR}/test/include)
 
 file(GLOB_RECURSE CATCHFS_UNITTEST_OBJECTS "${CMAKE_CURRENT_SOURCE_DIR}/test_*.cpp")
 
-add_executable(unittest_cachefs main.cpp ${CATCHFS_UNITTEST_OBJECTS})
+add_executable(unittest_quackstore main.cpp ${CATCHFS_UNITTEST_OBJECTS})
 
 if(NOT WIN32 AND NOT SUN AND NOT ZOS)
-  target_link_libraries(unittest_cachefs test_helpers duckdb)
+  target_link_libraries(unittest_quackstore test_helpers duckdb)
 else()
-  target_link_libraries(unittest_cachefs test_helpers duckdb_static)
+  target_link_libraries(unittest_quackstore test_helpers duckdb_static)
 endif()

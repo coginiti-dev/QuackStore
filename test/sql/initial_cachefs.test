@@ -2,19 +2,19 @@
 ### Before we load the extension, below queries will fail
 ###
 statement error
-SET GLOBAL cachefs_cache_enabled = true;
+SET GLOBAL quackstore_cache_enabled = true;
 ----
 Catalog Error
 
 statement error
-SET GLOBAL cachefs_cache_path = true;
+SET GLOBAL quackstore_cache_path = true;
 ----
 Catalog Error
 
 ###
 ### Extensions required for the test
 ###
-require cachefs
+require quackstore
 
 require httpfs
 
@@ -36,10 +36,10 @@ query I nosort CACHE_PATH
 SELECT getvariable('cache_path') AS value;
 
 statement ok
-SET GLOBAL cachefs_cache_path = getvariable('cache_path');
+SET GLOBAL quackstore_cache_path = getvariable('cache_path');
 
 query I nosort CACHE_PATH
-SELECT current_setting('cachefs_cache_path');
+SELECT current_setting('quackstore_cache_path');
 ----
 
 ###
@@ -79,17 +79,17 @@ false
 ### Fetch with cache disabled
 ###
 statement ok
-SET GLOBAL cachefs_cache_enabled = false;
+SET GLOBAL quackstore_cache_enabled = false;
 
 # Make sure we got cache disabled in DuckDB
 query I
-SELECT current_setting('cachefs_cache_enabled');
+SELECT current_setting('quackstore_cache_enabled');
 ----
 false
 
 # Run the query. Cache is disabled in settings, hence we shouldn't see it created and used for file access
 query IIII nosort BASELINE
-SELECT content FROM read_text('cachefs://' || getvariable('uri'));
+SELECT content FROM read_text('quackstore://' || getvariable('uri'));
 ----
 
 query I
@@ -102,17 +102,17 @@ false
 ### Fetch with cache enabled
 ###
 statement ok
-SET GLOBAL cachefs_cache_enabled = true;
+SET GLOBAL quackstore_cache_enabled = true;
 
 # Make sure we got cache enabled in DuckDB
 query I
-SELECT current_setting('cachefs_cache_enabled');
+SELECT current_setting('quackstore_cache_enabled');
 ----
 true
 
 # Now run the query with cache enabled
 query IIII nosort BASELINE
-SELECT content FROM read_text('cachefs://' || getvariable('uri'));
+SELECT content FROM read_text('quackstore://' || getvariable('uri'));
 ----
 
 query I
@@ -124,7 +124,7 @@ true
 ### Clear the cache. This should remove the cache file.
 ###
 statement ok
-SELECT * FROM cachefs_clear_cache();
+SELECT * FROM quackstore_clear_cache();
 
 query I
 SELECT value FROM CACHE_EXISTS;

@@ -5,7 +5,7 @@
 #include "block_manager.hpp"
 #include "metadata_manager.hpp"
 
-namespace cachefs {
+namespace quackstore {
 
 class Cache {
 public:
@@ -25,8 +25,8 @@ public:
     bool RetrieveBlock(const duckdb::string &file_path, int64_t block_index, duckdb::vector<uint8_t> &data);
 
     void StoreFileSize(const duckdb::string &file_path, int64_t file_size);
-    void StoreFileLastModified(const duckdb::string &file_path, time_t timestamp);
-    bool RetrieveFileMetadata(const duckdb::string &file_path, cachefs::MetadataManager::FileMetadata &file_metadata_out);
+    void StoreFileLastModified(const duckdb::string &file_path, duckdb::timestamp_t timestamp);
+    bool RetrieveFileMetadata(const duckdb::string &file_path, quackstore::MetadataManager::FileMetadata &file_metadata_out);
 
     //! Set new max cache size. Triggers eviction if new cache size is less than previous one.
     void SetMaxCacheSize(uint64_t new_max_cache_size_in_bytes);
@@ -59,4 +59,4 @@ private:
     std::atomic<int64_t> current_cache_users = 0;
 };
 
-}  // namespace cachefs
+}  // namespace quackstore

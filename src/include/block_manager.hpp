@@ -2,7 +2,7 @@
 
 #include <duckdb.hpp>
 
-namespace cachefs {
+namespace quackstore {
 
 #define Bytes(n) (n)
 #define Kilobytes(n) (n << 10)
@@ -114,4 +114,4 @@ private:
     duckdb::set<block_id_t> free_list;
 };
 
-}  // namespace cachefs
+}  // namespace quackstore

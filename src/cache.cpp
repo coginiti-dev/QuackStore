@@ -9,7 +9,7 @@ namespace
     }
 }
 
-namespace cachefs {
+namespace quackstore {
 
 Cache::Cache(uint64_t block_size, duckdb::unique_ptr<BlockManager> block_manager,
              duckdb::unique_ptr<MetadataManager> metadata_manager)
@@ -183,7 +183,7 @@ void Cache::StoreFileSize(const duckdb::string &file_path, int64_t file_size) {
     SetDirty(true);
 }
 
-void Cache::StoreFileLastModified(const duckdb::string &file_path, time_t timestamp) {
+void Cache::StoreFileLastModified(const duckdb::string &file_path, duckdb::timestamp_t timestamp) {
     duckdb::lock_guard<std::recursive_mutex> lock{cache_mutex};
     metadata_mgr->SetFileLastModified(file_path, timestamp);
     SetDirty(true);
@@ -224,4 +224,4 @@ void Cache::SetDirty(bool flag) {
     dirty = 0;
 }
 
-}  // namespace cachefs
+}  // namespace quackstore
