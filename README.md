@@ -18,7 +18,7 @@ When you query remote files (like CSV files from the web), DuckDB normally downl
 
 1. **Enable the extension** (if not already loaded):
    ```sql
-   INSTALL quackstore;
+   INSTALL quackstore FROM community;
    LOAD quackstore;
    ```
 
