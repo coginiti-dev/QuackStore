@@ -43,13 +43,16 @@ MetadataManager::FileMetadata MetadataManager::FileMetadata::Read(duckdb::ReadSt
 }
 
 duckdb::string MetadataManager::FileMetadata::ToString() const {
-    duckdb::string result = "{file_size=" + std::to_string(file_size) + ", blocks={";
+    duckdb::string result = "{";
+    result += " file_size=" + std::to_string(file_size);
+    result += " blocks={";
     for (const auto& pair: blocks) {
         const auto& block = pair.second;
-        result += "{" + std::to_string(block.block_index) + ": " + std::to_string(block.block_id) + "}, ";
+        result += " {" + std::to_string(block.block_index) + ": " + std::to_string(block.block_id) + "}";
     }
-    result += "}, __last_modified_deprecated=" + std::to_string(__last_modified_deprecated);
-    result += ", last_modified=" + std::to_string(last_modified.value);
+    result += "}";
+    result += " __last_modified_deprecated=" + std::to_string(__last_modified_deprecated);
+    result += " last_modified=" + std::to_string(last_modified.value) + " (" + duckdb::Timestamp::ToString(last_modified) + ")";
     result += "}";
     return result;
 }
