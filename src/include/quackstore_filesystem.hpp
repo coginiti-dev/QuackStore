@@ -29,6 +29,22 @@ public:
     duckdb::timestamp_t GetLastModifiedTime(duckdb::FileHandle &handle) override;
     bool IsManuallySet() override { return true; }
 
+	//! Check if a file exists
+	bool FileExists(const duckdb::string &filename, duckdb::optional_ptr<duckdb::FileOpener> opener = nullptr) override;
+
+	//! Check if a directory exists
+	bool DirectoryExists(const duckdb::string &directory, duckdb::optional_ptr<duckdb::FileOpener> opener = nullptr) override;
+
+	//! List files in a directory, invoking the callback method for each one with (filename, is_dir)
+	bool ListFiles(const duckdb::string &directory,
+                           const std::function<void(const duckdb::string &, bool)> &callback,
+                           duckdb::FileOpener *opener = nullptr) override;
+
+	duckdb::unique_ptr<duckdb::FileHandle> OpenCompressedFile(duckdb::QueryContext context, 
+                                                                      duckdb::unique_ptr<duckdb::FileHandle> handle,
+	                                                                  bool write) override;
+
+
 private:
     Cache& cache;
 };

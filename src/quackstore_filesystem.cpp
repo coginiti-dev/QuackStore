@@ -11,6 +11,25 @@ namespace {
     duckdb::string StripPrefix(const duckdb::string &text, const duckdb::string &prefix) {
         return text.rfind(prefix, 0) == 0 ? text.substr(prefix.length()) : text;
     }
+
+    bool TryGetUnderlyingFileSystem(duckdb::optional_ptr<duckdb::FileOpener> opener, duckdb::FileSystem*& out_fs) {
+        if (!opener) {
+            return false;
+        }
+        auto optional_cc = opener->TryGetClientContext();
+        if (optional_cc) {
+            out_fs = &duckdb::FileSystem::GetFileSystem(*optional_cc);
+            return true;
+        } 
+        
+        auto optional_db = opener->TryGetDatabase();
+        if (optional_db) {
+            out_fs = &duckdb::FileSystem::GetFileSystem(*optional_db);
+            return true;
+        } 
+
+        return false;
+    }
 }
 
 namespace quackstore {
@@ -322,26 +341,12 @@ int64_t QuackstoreFileSystem::Read(duckdb::FileHandle &handle, void *buffer, int
 }
 
 duckdb::vector<duckdb::OpenFileInfo> QuackstoreFileSystem::Glob(const duckdb::string &path, duckdb::FileOpener *opener) {
-    duckdb::string actual_path = StripPrefix(path, SCHEMA_PREFIX);
+    duckdb::FileSystem* underlying_fs_ptr = nullptr;
+    if (!TryGetUnderlyingFileSystem(opener, underlying_fs_ptr)) {
+        throw duckdb::InvalidInputException("Unable to get underlying FileSystem for Glob operation");
+    }
 
-    duckdb::FileSystem* ufs = nullptr;
-    auto optional_cc = opener->TryGetClientContext();
-    auto optional_db = opener->TryGetDatabase();
-    if (optional_cc)
-    {
-        ufs = &duckdb::FileSystem::GetFileSystem(*optional_cc);
-    }
-    else if (optional_db)
-    {
-        ufs = &duckdb::FileSystem::GetFileSystem(*optional_db);
-    }
-    else
-    {
-        throw duckdb::InvalidInputException("Unable to read QuackStore extension parameters");
-    }
-    auto& underlying_fs = *ufs;
-
-    auto entries = underlying_fs.Glob(actual_path);
+    auto entries = underlying_fs_ptr->Glob(StripPrefix(path, SCHEMA_PREFIX));
     if (path.rfind(SCHEMA_PREFIX, 0) == 0) {
         for (auto &e : entries) {
             e.path = SCHEMA_PREFIX + e.path;
@@ -369,6 +374,44 @@ idx_t QuackstoreFileSystem::SeekPosition(duckdb::FileHandle &handle) {
 duckdb::timestamp_t QuackstoreFileSystem::GetLastModifiedTime(duckdb::FileHandle &handle) {
     auto &caching_file_handle = handle.Cast<CacheFileHandle>();
     return caching_file_handle.GetFileLastModified();
+}
+
+bool QuackstoreFileSystem::FileExists(const duckdb::string &filename, duckdb::optional_ptr<duckdb::FileOpener> opener) {
+    duckdb::FileSystem* underlying_fs_ptr = nullptr;
+    if (!TryGetUnderlyingFileSystem(opener, underlying_fs_ptr)) {
+        throw duckdb::InvalidInputException("Unable to get underlying FileSystem for FileExists operation");
+    }
+
+    auto actual_path = StripPrefix(filename, SCHEMA_PREFIX);
+    return underlying_fs_ptr->FileExists(actual_path);
+}
+
+bool QuackstoreFileSystem::DirectoryExists(const duckdb::string &directory, duckdb::optional_ptr<duckdb::FileOpener> opener) {
+    duckdb::FileSystem* underlying_fs_ptr = nullptr;
+    if (!TryGetUnderlyingFileSystem(opener, underlying_fs_ptr)) {
+        throw duckdb::InvalidInputException("Unable to get underlying FileSystem for DirectoryExists operation");
+    }
+
+    auto actual_path = StripPrefix(directory, SCHEMA_PREFIX);
+    return underlying_fs_ptr->DirectoryExists(actual_path);
+}
+
+bool QuackstoreFileSystem::ListFiles(const duckdb::string &directory, 
+                                     const std::function<void(const duckdb::string &, bool)> &callback, 
+                                     duckdb::FileOpener *opener) {
+    duckdb::FileSystem* underlying_fs_ptr = nullptr;
+    if (!TryGetUnderlyingFileSystem(opener, underlying_fs_ptr)) {
+        throw duckdb::InvalidInputException("Unable to get underlying FileSystem for ListFiles operation");
+    }
+
+    auto actual_path = StripPrefix(directory, QuackstoreFileSystem::SCHEMA_PREFIX);
+    return underlying_fs_ptr->ListFiles(actual_path, callback);
+}
+
+duckdb::unique_ptr<duckdb::FileHandle> QuackstoreFileSystem::OpenCompressedFile(duckdb::QueryContext context,
+                                                                    duckdb::unique_ptr<duckdb::FileHandle> handle,
+                                                                    bool write) {
+    throw duckdb::NotImplementedException("%s: OpenCompressedFile is not implemented!", GetName());
 }
 
 }  // namespace quackstore
