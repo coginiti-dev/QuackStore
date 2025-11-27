@@ -852,3 +852,133 @@ TEST_CASE_METHOD(WithDuckDB, "CacheFileHandle constructor exception handling pre
         }
     }
 }
+
+TEST_CASE_METHOD(WithDuckDB, "Check QuackstoreFileSystem::FileExists", "[quackstore]") {
+    const auto CACHE_PATH = "/tmp/cache.bin";
+    RemoveLocalFile(CACHE_PATH);
+    auto cache = Cache{16};
+    cache.Open(CACHE_PATH);
+
+    const duckdb::string FILE_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + duckdb::string{"test/testdata/read_test.txt"};
+
+    auto& main_fs_ref = GetDBInstance().GetFileSystem();
+    main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
+    CHECK_FALSE(main_fs_ref.FileExists(FILE_PATH));
+
+    main_fs_ref.RegisterSubSystem(duckdb::make_uniq<QuackstoreFileSystem>(cache));
+    CHECK(main_fs_ref.FileExists(FILE_PATH) == true);
+}
+
+
+// TEST_CASE_METHOD(WithDuckDB, "Check QuackstoreFileSystem::FileExists (via ATATCH)", "[quackstore]") {
+//     const auto CACHE_PATH = "/tmp/cache.bin";
+//     RemoveLocalFile(CACHE_PATH);
+//     auto cache = Cache{16};
+//     cache.Open(CACHE_PATH);
+// 
+//     const duckdb::string FILE_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + duckdb::string{"test/testdata/read_test.txt"};
+// 
+//     auto& main_fs_ref = GetDBInstance().GetFileSystem();
+//     main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
+//     main_fs_ref.RegisterSubSystem(duckdb::make_uniq<QuackstoreFileSystem>(cache));
+// 
+//     auto& db = GetDBInstance();
+//     auto con = duckdb::Connection{db};
+//     auto result = con.Query("SELECT 1;");
+// 
+//     result = con.Query("ATTACH 's3://dkosmakov/mydb3.duckdb' as remote_db_noncached;");
+//     CHECK_FALSE(result->HasError());
+// 
+//     result = con.Query("ATTACH 'quackstore://s3://dkosmakov/mydb3.duckdb' as remote_db_readonly (READ_ONLY);");
+//     REQUIRE_FALSE(result->HasError());
+// 
+//     result = con.Query("ATTACH 'quackstore://s3://dkosmakov/mydb3.duckdb' as remote_db;");
+//     CHECK(result->HasError());
+// 
+//     result = con.Query("SELECT * FROM remote_db_readonly.integers;");
+//     REQUIRE_FALSE(result->HasError());
+//     CHECK(result->ColumnCount() == 1);
+//     CHECK(result->RowCount() == 4);
+// }
+
+TEST_CASE_METHOD(WithDuckDB, "Check QuackstoreFileSystem::DirectoryExists", "[quackstore]") {
+    const auto CACHE_PATH = "/tmp/cache_direxists_test.bin";
+    RemoveLocalFile(CACHE_PATH);
+    auto cache = Cache{16};
+    cache.Open(CACHE_PATH);
+
+    const auto DIR_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + duckdb::string{"test/testdata"};
+    const auto NON_EXISTENT_DIR_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + duckdb::string{"test/nonexistent_directory"};
+    const auto FILE_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + duckdb::string{"test/testdata/read_test.txt"};
+
+    auto& main_fs_ref = GetDBInstance().GetFileSystem();
+    SECTION("Before registering QuackstoreFileSystem, directory should not be found") {
+        main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
+        CHECK_FALSE(main_fs_ref.DirectoryExists(DIR_PATH));
+        CHECK_FALSE(main_fs_ref.DirectoryExists(NON_EXISTENT_DIR_PATH));
+        CHECK_FALSE(main_fs_ref.DirectoryExists(FILE_PATH));
+    }
+
+    SECTION("After registering QuackstoreFileSystem") {
+        main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
+        main_fs_ref.RegisterSubSystem(duckdb::make_uniq<QuackstoreFileSystem>(cache));
+        CHECK(main_fs_ref.DirectoryExists(DIR_PATH) == true);
+        CHECK_FALSE(main_fs_ref.DirectoryExists(NON_EXISTENT_DIR_PATH));
+        CHECK_FALSE(main_fs_ref.DirectoryExists(FILE_PATH));
+    }
+}
+
+TEST_CASE_METHOD(WithDuckDB, "Check QuackstoreFileSystem::ListFiles", "[quackstore]") {
+    const auto CACHE_PATH = "/tmp/cache_listfiles_test.bin";
+    RemoveLocalFile(CACHE_PATH);
+    auto cache = Cache{16};
+    cache.Open(CACHE_PATH);
+
+    auto& main_fs_ref = GetDBInstance().GetFileSystem();
+    main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
+    main_fs_ref.RegisterSubSystem(duckdb::make_uniq<QuackstoreFileSystem>(cache));
+
+    SECTION("List files in test directory") {
+        const duckdb::string DIR_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + duckdb::string{"test/testdata"};
+
+        duckdb::vector<duckdb::string> found_files;
+        duckdb::vector<bool> is_directory_flags;
+
+        auto callback = [&](const duckdb::string& path, bool is_dir) {
+            found_files.push_back(path);
+            is_directory_flags.push_back(is_dir);
+        };
+
+        bool result = main_fs_ref.ListFiles(DIR_PATH, callback);
+        CHECK(result == true);
+        CHECK(found_files.size() > 0);
+
+        // Check that we found our test file
+        bool found_test_file = false;
+        for (size_t i = 0; i < found_files.size(); ++i) {
+            INFO("Found: " << found_files[i] << " (is_dir: " << is_directory_flags[i] << ")");
+            CHECK_FALSE(found_files[i].empty());
+            if (found_files[i].find("read_test.txt") != duckdb::string::npos) {
+                found_test_file = true;
+                CHECK(is_directory_flags[i] == false); // Should be a file, not directory
+            }
+        }
+        CHECK(found_test_file == true);
+    }
+
+    SECTION("List files in non-existent directory") {
+        const duckdb::string DIR_PATH = QuackstoreFileSystem::SCHEMA_PREFIX + duckdb::string{"test/nonexistent_directory"};
+
+        duckdb::vector<duckdb::string> found_files;
+        auto callback = [&](const duckdb::string& path, bool is_dir) {
+            found_files.push_back(path);
+        };
+
+        // ListFiles on non-existent directory should either return false or throw
+        // depending on underlying filesystem implementation
+        bool result = main_fs_ref.ListFiles(DIR_PATH, callback);
+        CHECK_FALSE(result);
+        // Either way, we shouldn't find any files
+        CHECK(found_files.size() == 0);
+    }
+}
