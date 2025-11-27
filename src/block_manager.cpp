@@ -301,27 +301,27 @@ void BlockManager::LoadFreeList() {
 void BlockManager::ValidateBlockId(block_id_t block_id) const {
     if (block_id == INVALID_BLOCK_ID) {
         throw duckdb::InvalidInputException(
-            "Block ID cannot be INVALID_BLOCK_ID",
-            duckdb::unordered_map<duckdb::string, duckdb::string>{
+            {
                 {"block_id", std::to_string(block_id)}
-            }
+            },
+            "Block ID cannot be INVALID_BLOCK_ID"
         );
     }
     if (block_id < 0) {
         throw duckdb::InvalidInputException(
-            "Block ID cannot be negative",
-            duckdb::unordered_map<duckdb::string, duckdb::string>{
+            {
                 {"block_id", std::to_string(block_id)}
-            }
+            },
+            "Block ID cannot be negative"
         );
     }
     if (block_id >= max_block) {
         throw duckdb::InvalidInputException(
-            "Block ID cannot exceed max_block",
-            duckdb::unordered_map<duckdb::string, duckdb::string>{
+            {
                 {"block_id", std::to_string(block_id)},
                 {"max_block", std::to_string(max_block)}
-            }
+            },
+            "Block ID cannot exceed max_block"
         );
     }
 }
