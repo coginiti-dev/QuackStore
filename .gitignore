@@ -2,5 +2,6 @@ build
 .idea
 .venv
 .vscode/settings.json
+.cache
 duckdb_unittest_tempdir/
 .DS_Store

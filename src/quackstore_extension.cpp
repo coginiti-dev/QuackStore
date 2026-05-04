@@ -43,11 +43,11 @@ static void LoadInternal(ExtensionLoader &loader) {
 		loader.RegisterFunction(std::move(info));
 	}
 
-    auto extension_callback = make_uniq<quackstore::ExtensionCallback>(std::move(cache));
+    auto extension_callback = duckdb::make_shared_ptr<quackstore::ExtensionCallback>(std::move(cache));
     for (auto& connection : ConnectionManager::Get(instance).GetConnectionList()) {
         extension_callback->OnConnectionOpened(*connection);
     }
-    config.extension_callbacks.push_back(std::move(extension_callback));
+    config.GetCallbackManager().Register(std::move(extension_callback));
 }
 
 void QuackstoreExtension::Load(ExtensionLoader &loader) { 
