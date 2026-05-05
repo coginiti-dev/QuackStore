@@ -853,7 +853,102 @@ TEST_CASE_METHOD(WithDuckDB, "CacheFileHandle constructor exception handling pre
     }
 }
 
-TEST_CASE_METHOD(WithDuckDB, "Check QuackstoreFileSystem::FileExists", "[quackstore]") {
+TEST_CASE_METHOD(WithDuckDB, "Evict entries having file size == 0, while having blocks stored or underlying file size > 0 ", "[cachefs][zero-size]") {
+    const duckdb::string CACHE_PATH = "/tmp/cache_zero_size_test.bin";
+    const duckdb::string TEST_FS_PREFIX = "test://";
+    const duckdb::string FILENAME = "/tmp/non_empty_test_file.txt";
+    const duckdb::string FILE_URI = TEST_FS_PREFIX + FILENAME;
+    const duckdb::string CACHED_FILE_URI = QuackstoreFileSystem::SCHEMA_PREFIX + FILE_URI;
+    const duckdb::string FILE_CONTENT = "QUACK!";
+
+    // Setup test filesystem
+    auto test_fs = duckdb::make_uniq<TestFileSystem>(TEST_FS_PREFIX);
+    auto& test_fs_ref = *test_fs;
+    test_fs_ref.ResetFileSize(); // Use real file size
+    test_fs_ref.SetLastModified(duckdb::timestamp_t{123});
+
+    // Setup cache
+    RemoveLocalFile(CACHE_PATH);
+    auto& config = duckdb::DBConfig::GetConfig(GetDBInstance());
+    config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_PATH, duckdb::Value{CACHE_PATH});
+    config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_CACHE_ENABLED, duckdb::Value::BOOLEAN(true));
+
+    auto cache = duckdb::make_uniq<Cache>(1024);
+    Cache& cache_ref = *cache;
+    auto cache_fs = duckdb::make_uniq<QuackstoreFileSystem>(*cache);
+
+    auto& main_fs_ref = GetDBInstance().GetFileSystem();
+    main_fs_ref.UnregisterSubSystem(QuackstoreFileSystem::FILESYSTEM_NAME);
+    main_fs_ref.RegisterSubSystem(std::move(cache_fs));
+    main_fs_ref.RegisterSubSystem(std::move(test_fs));
+
+    // Create non-empty file
+    auto local_fs = duckdb::FileSystem::CreateLocal();
+    {
+        auto handle = local_fs->OpenFile(FILENAME,
+            duckdb::FileFlags::FILE_FLAGS_FILE_CREATE_NEW |
+            duckdb::FileFlags::FILE_FLAGS_WRITE);
+        REQUIRE(handle);
+        handle->Write((void*)FILE_CONTENT.c_str(), FILE_CONTENT.size());
+        handle->Close();
+    }
+
+    auto initial_handle = main_fs_ref.OpenFile(CACHED_FILE_URI, duckdb::FileOpenFlags::FILE_FLAGS_READ);
+    duckdb::vector<char> buffer(256);
+    main_fs_ref.Read(*initial_handle, buffer.data(), buffer.size()); // Populate cache blocks
+
+    MetadataManager::FileMetadata md;
+    cache_ref.RetrieveFileMetadata(CACHED_FILE_URI, md);
+    REQUIRE(md.last_modified == duckdb::timestamp_t{123});
+    REQUIRE(md.file_size == FILE_CONTENT.size());
+    REQUIRE_FALSE(md.blocks.empty());
+    initial_handle->Close();
+
+    cache_ref.StoreFileSize(CACHED_FILE_URI, 0); // Corrupt the metadata to have file_size = 0
+    cache_ref.RetrieveFileMetadata(CACHED_FILE_URI, md);
+    REQUIRE(md.last_modified == duckdb::timestamp_t{123});
+    REQUIRE(md.file_size == 0);
+    REQUIRE_FALSE(md.blocks.empty());
+
+    SECTION("We have blocks in cache, but cached file size == 0, should evict") {
+        for(bool val: {true, false}) {
+            INFO("PARAM_NAME_QUACKSTORE_DATA_MUTABLE: " << val);
+            config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_DATA_MUTABLE, duckdb::Value::BOOLEAN(val));
+
+            auto handle = main_fs_ref.OpenFile(CACHED_FILE_URI, duckdb::FileOpenFlags::FILE_FLAGS_READ);
+            REQUIRE(handle != nullptr);
+
+            cache_ref.RetrieveFileMetadata(CACHED_FILE_URI, md);
+            REQUIRE(md.last_modified == duckdb::timestamp_t{123});
+            REQUIRE(md.file_size == FILE_CONTENT.size());
+            REQUIRE(md.blocks.empty());
+        }
+    }
+
+    SECTION("Underlying file size > 0, but cached file size == 0, should evict") {
+        for(bool val: {true, false}) {
+            INFO("PARAM_NAME_QUACKSTORE_DATA_MUTABLE: " << val);
+            config.SetOptionByName(ExtensionParams::PARAM_NAME_QUACKSTORE_DATA_MUTABLE, duckdb::Value::BOOLEAN(val));
+
+            cache_ref.Evict(CACHED_FILE_URI); // First evict to remove blocks
+            cache_ref.StoreFileSize(CACHED_FILE_URI, 0); // Corrupt the metadata
+            cache_ref.StoreFileLastModified(CACHED_FILE_URI, duckdb::timestamp_t{123});
+
+            auto handle = main_fs_ref.OpenFile(CACHED_FILE_URI, duckdb::FileOpenFlags::FILE_FLAGS_READ);
+            REQUIRE(handle != nullptr);
+
+            cache_ref.RetrieveFileMetadata(CACHED_FILE_URI, md);
+            REQUIRE(md.last_modified == duckdb::timestamp_t{123});
+            REQUIRE(md.file_size == FILE_CONTENT.size());
+            REQUIRE(md.blocks.empty());
+        }
+    }
+
+    // Cleanup
+    local_fs->RemoveFile(FILENAME);
+}
+
+TEST_CASE_METHOD(WithDuckDB, "Check QuackstoreFileSystem::FileExists", "[cachefs]") {
     const auto CACHE_PATH = "/tmp/cache.bin";
     RemoveLocalFile(CACHE_PATH);
     auto cache = Cache{16};
