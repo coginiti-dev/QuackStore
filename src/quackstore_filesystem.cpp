@@ -81,16 +81,19 @@ public:
             if (!cache.RetrieveFileMetadata(path, md))
             {
                 // First time caching this file - store metadata
-                cache.StoreFileSize(GetPath(), get_underlying_filesize());
-                cache.StoreFileLastModified(GetPath(), get_underlying_last_modified());
+                auto file_size = get_underlying_filesize();
+                auto last_modified = get_underlying_last_modified();
+                cache.StoreFileSize(GetPath(), file_size);
+                cache.StoreFileLastModified(GetPath(), last_modified);
                 return;
             }
+
+            // Validate existing metadata
+            bool evict_file_entry = false;
 
             // For mutable data, validate cache freshness
             if (params.data_mutable)
             {
-                bool evict_file_entry = false;
-
                 if (md.last_modified != get_underlying_last_modified())
                 {
                     evict_file_entry = true;
@@ -100,18 +103,26 @@ public:
                     // Certain FS don't provide LastModified property. Let's check file size
                     evict_file_entry = (md.file_size != get_underlying_filesize() || get_underlying_filesize() == 0);
                 }
+            }
 
-                if (evict_file_entry)
-                {
-                    // File changed - invalidate cache and update metadata
-                    cache.Evict(path);
+            // Validate file size
+            if (md.file_size == 0)
+            {
+                // There are blocks cached, something is wrong - evict the entry 
+                evict_file_entry = evict_file_entry || !md.blocks.empty();
+                // Underlying file size is different - evict the entry
+                evict_file_entry = evict_file_entry || get_underlying_filesize() != 0;
+            }
 
-                    duckdb::timestamp_t last_modified = get_underlying_last_modified();
-                    cache.StoreFileLastModified(GetPath(), last_modified);
+            if (evict_file_entry)
+            {
+                // File changed - invalidate cache and update metadata
+                cache.Evict(path);
 
-                    int64_t filesize = get_underlying_filesize();
-                    cache.StoreFileSize(GetPath(), filesize);
-                }
+                auto last_modified = get_underlying_last_modified();
+                auto file_size = get_underlying_filesize();
+                cache.StoreFileLastModified(GetPath(), last_modified);
+                cache.StoreFileSize(GetPath(), file_size);
             }
         }
         catch (...)
